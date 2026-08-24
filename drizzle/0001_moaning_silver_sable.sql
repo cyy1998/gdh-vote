@@ -1,0 +1,1 @@
+ALTER TABLE `election_state` ADD `generation` integer DEFAULT 1 NOT NULL;
