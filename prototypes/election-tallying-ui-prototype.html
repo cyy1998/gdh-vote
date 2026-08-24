@@ -1,0 +1,897 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>选举计票助手 - 页面布局原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f5f4;
+      --surface: #ffffff;
+      --surface-2: #f8faf9;
+      --ink: #17201c;
+      --muted: #66716b;
+      --line: #d8dedb;
+      --line-strong: #aeb8b3;
+      --green: #167252;
+      --green-soft: #e8f4ef;
+      --red: #b93636;
+      --red-soft: #faecec;
+      --amber: #9a6100;
+      --amber-soft: #fff3d8;
+      --blue: #265f86;
+      --blue-soft: #eaf3f8;
+      --shadow: 0 10px 30px rgba(20, 31, 25, .12);
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); }
+    body { min-width: 320px; }
+    button, input, select { font: inherit; letter-spacing: 0; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+      outline: 3px solid rgba(38, 95, 134, .28);
+      outline-offset: 2px;
+    }
+    .icon { width: 17px; height: 17px; stroke-width: 2; flex: 0 0 auto; }
+    .muted { color: var(--muted); }
+    .mono { font-family: Consolas, "SFMono-Regular", monospace; }
+    .prototype-tag {
+      display: inline-flex; align-items: center; gap: 6px; height: 25px; padding: 0 8px;
+      border: 1px solid #d59820; background: #fff8e8; color: #7c4d00; border-radius: 4px;
+      font-size: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .connection { display: inline-flex; align-items: center; gap: 7px; color: #325345; font-size: 13px; }
+    .connection::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #1e9a68; box-shadow: 0 0 0 3px #dff3eb; }
+    .btn {
+      min-height: 38px; padding: 0 13px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: 6px; font-weight: 700;
+    }
+    .btn:hover { border-color: #7c8a83; background: #f5f8f6; }
+    .btn.primary { color: #fff; background: var(--green); border-color: var(--green); }
+    .btn.primary:hover { background: #105e43; }
+    .btn.danger { color: var(--red); border-color: #d8a6a6; background: #fffafa; }
+    .btn.danger:hover { background: var(--red-soft); }
+    .btn.ghost { border-color: transparent; background: transparent; }
+    .btn.icon-only { width: 38px; padding: 0; }
+    .segmented { display: inline-grid; grid-template-columns: repeat(3, minmax(52px, 1fr)); min-width: 188px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
+    .segmented button { min-height: 32px; border: 0; border-right: 1px solid var(--line); background: #fff; color: var(--muted); font-size: 13px; }
+    .segmented button:last-child { border-right: 0; }
+    .segmented button[data-selected="true"][data-choice="approve"] { background: var(--green-soft); color: #0f6848; font-weight: 800; }
+    .segmented button[data-selected="true"][data-choice="oppose"] { background: var(--red-soft); color: var(--red); font-weight: 800; }
+    .segmented button[data-selected="true"][data-choice="abstain"] { background: var(--amber-soft); color: var(--amber); font-weight: 800; }
+    .status-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 800; }
+    .status-pill.invalid { color: var(--red); background: var(--red-soft); border: 1px solid #eccaca; }
+    .status-pill.valid { color: var(--green); background: var(--green-soft); border: 1px solid #b8ddcf; }
+    .metric { min-width: 0; }
+    .metric .value { font-size: 24px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .metric .label { margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .view-tabs, .election-tabs { display: flex; align-items: center; gap: 4px; }
+    .view-tab, .election-tab { min-height: 36px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-weight: 700; }
+    .view-tab.active, .election-tab.active { color: var(--ink); background: #e7ece9; }
+    .role-select { height: 36px; min-width: 148px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; padding: 0 30px 0 10px; color: var(--ink); }
+    .section-heading { margin: 0; font-size: 17px; line-height: 1.3; }
+    .section-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .divider { height: 1px; background: var(--line); }
+
+    /* Variant A: dense ledger with a fixed decision rail. */
+    .variant-a .app-header { height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 0 24px; background: #fff; border-bottom: 1px solid var(--line); }
+    .variant-a .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .variant-a .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; color: #fff; background: #26362f; border-radius: 6px; }
+    .variant-a .brand-copy strong { display: block; font-size: 17px; white-space: nowrap; }
+    .variant-a .brand-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .variant-a .header-tools { display: flex; align-items: center; gap: 12px; }
+    .variant-a .subnav { height: 49px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; background: #fbfcfb; border-bottom: 1px solid var(--line); }
+    .variant-a .a-main { height: calc(100vh - 111px); min-height: 560px; padding: 16px 24px 88px; }
+    .variant-a .a-entry { height: 100%; display: grid; grid-template-columns: minmax(680px, 1fr) 310px; gap: 16px; max-width: 1480px; margin: 0 auto; }
+    .variant-a .ballot-panel, .variant-a .decision-rail { background: #fff; border: 1px solid var(--line); border-radius: 7px; }
+    .variant-a .ballot-panel { min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .variant-a .panel-head { min-height: 63px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    .variant-a .candidate-ledger { min-height: 0; overflow: auto; padding: 10px; display: grid; grid-template-columns: repeat(2, minmax(315px, 1fr)); align-content: start; gap: 7px 10px; }
+    .variant-a .candidate-row { min-height: 44px; display: grid; grid-template-columns: 34px minmax(70px, 1fr) auto; align-items: center; gap: 9px; padding: 5px 7px; border: 1px solid #e2e7e4; border-radius: 5px; background: #fff; }
+    .variant-a .candidate-row.changed { border-color: #d7c49c; background: #fffcf5; }
+    .variant-a .candidate-no { color: #89928d; font-size: 12px; text-align: right; }
+    .variant-a .candidate-name { min-width: 0; font-weight: 800; white-space: nowrap; }
+    .variant-a .decision-rail { overflow: auto; padding: 16px; }
+    .variant-a .rail-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 14px 0; }
+    .variant-a .rail-metrics .metric { padding-right: 8px; border-right: 1px solid var(--line); }
+    .variant-a .rail-metrics .metric:last-child { border-right: 0; }
+    .variant-a .validity-block { padding: 11px; border-radius: 6px; background: var(--red-soft); color: var(--red); font-size: 13px; line-height: 1.6; }
+    .variant-a .validity-block.valid { background: var(--green-soft); color: var(--green); }
+    .write-in-block { margin-top: 16px; }
+    .write-in-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .write-in-head strong { font-size: 14px; }
+    .write-in-head span { color: var(--muted); font-size: 12px; }
+    .write-in-form { display: grid; grid-template-columns: 1fr 38px; gap: 6px; }
+    .write-in-form input { width: 100%; height: 38px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 10px; background: #fff; }
+    .write-in-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .write-in-item { min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px 0 10px; background: var(--blue-soft); border: 1px solid #cbdfe9; border-radius: 5px; font-size: 13px; }
+    .write-in-item button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; background: transparent; color: #53646d; }
+    .entry-actions { display: grid; gap: 8px; margin-top: 16px; }
+    .role-identity { display: flex; align-items: center; gap: 9px; }
+    .role-badge { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; font-size: 13px; font-weight: 800; white-space: nowrap; }
+    .role-badge small { color: var(--muted); font-size: 11px; font-weight: 500; }
+    .locked-election { padding: 9px 10px; border: 1px solid var(--line); border-radius: 5px; background: #f4f7f5; }
+    .locked-election strong { display: block; font-size: 13px; }
+    .locked-election span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+
+    /* Formal group selection gate shared by all prototype variants. */
+    .group-gate-page { min-height: 100vh; padding: 0 0 88px; background: #f4f6f5; }
+    .group-gate-header { height: 66px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 0 28px; border-bottom: 1px solid var(--line); background: #fff; }
+    .group-gate-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .group-gate-mark { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 6px; color: #fff; background: #25332d; }
+    .group-gate-brand strong { display: block; font-size: 17px; }
+    .group-gate-brand span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .group-gate-header-tools { display: flex; align-items: center; gap: 12px; }
+    .group-gate-main { width: min(980px, calc(100% - 40px)); margin: 0 auto; padding-top: 48px; }
+    .group-gate-intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 30px; padding-bottom: 24px; border-bottom: 2px solid #26332d; }
+    .group-gate-kicker { margin: 0 0 8px; color: var(--green); font-size: 12px; font-weight: 800; }
+    .group-gate-intro h1 { margin: 0; font-size: 29px; line-height: 1.25; }
+    .group-gate-intro p { max-width: 620px; margin: 9px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+    .result-entry { min-width: 188px; }
+    .group-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; padding-top: 26px; }
+    .group-section { min-width: 0; }
+    .group-section-head { min-height: 57px; display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+    .group-section-head h2 { margin: 0; font-size: 18px; }
+    .group-section-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .election-lock { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; border-radius: 4px; background: #eef2f0; color: #506058; font-size: 11px; white-space: nowrap; }
+    .group-options { display: grid; gap: 9px; padding-top: 13px; }
+    .group-option { min-height: 68px; display: grid; grid-template-columns: 42px minmax(0, 1fr) 26px; align-items: center; gap: 12px; width: 100%; padding: 10px 13px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--ink); text-align: left; }
+    .group-option:hover { border-color: var(--green); background: #f8fcfa; }
+    .group-option-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 5px; color: #315246; background: #e8f1ed; }
+    .group-option strong { display: block; font-size: 15px; }
+    .group-option span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .group-option > .icon { color: #78837e; }
+    .group-gate-note { margin-top: 26px; padding-top: 15px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+    /* Variant B: a spatial ballot board with a dark navigation rail. */
+    .variant-b { background: #eef1f0; }
+    .variant-b .b-header { height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 20px 0 82px; background: #fff; border-bottom: 1px solid #d5dcda; }
+    .variant-b .b-title { display: flex; align-items: center; gap: 12px; }
+    .variant-b .b-title h1 { margin: 0; font-size: 18px; }
+    .variant-b .b-header-tools { display: flex; align-items: center; gap: 12px; }
+    .variant-b .b-rail { position: fixed; inset: 0 auto 0 0; z-index: 4; width: 66px; background: #202b27; color: #dfe8e4; display: flex; flex-direction: column; align-items: center; padding: 12px 7px; }
+    .variant-b .b-rail .rail-logo { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid #50615a; border-radius: 6px; color: #fff; }
+    .variant-b .rail-nav { width: 100%; display: grid; gap: 7px; margin-top: 30px; }
+    .variant-b .rail-nav button { width: 100%; min-height: 52px; display: grid; place-items: center; gap: 3px; border: 0; border-radius: 5px; background: transparent; color: #aebbb6; font-size: 10px; }
+    .variant-b .rail-nav button.active { background: #34443d; color: #fff; }
+    .variant-b .b-main { margin-left: 66px; height: calc(100vh - 58px); min-height: 600px; padding: 15px 18px 92px; overflow: auto; }
+    .variant-b .ballot-toolbar { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 4px 12px; }
+    .variant-b .toolbar-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+    .variant-b .toolbar-stats { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .variant-b .mini-stat { min-height: 34px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--muted); font-size: 12px; }
+    .variant-b .mini-stat strong { color: var(--ink); font-size: 16px; }
+    .variant-b .candidate-board { display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr)); gap: 9px; }
+    .variant-b .candidate-tile { height: 104px; display: flex; flex-direction: column; justify-content: space-between; padding: 11px; border: 1px solid #d7ddda; border-radius: 6px; background: #fff; }
+    .variant-b .candidate-tile.changed { border-color: #c4993e; box-shadow: inset 0 3px 0 #d5a037; }
+    .variant-b .tile-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .variant-b .tile-name { font-size: 16px; font-weight: 800; }
+    .variant-b .tile-no { color: #929b97; font-size: 11px; }
+    .variant-b .candidate-tile .segmented { min-width: 0; width: 100%; grid-template-columns: repeat(3, 1fr); }
+    .variant-b .candidate-tile .segmented button { font-size: 12px; }
+    .variant-b .ballot-dock { margin-top: 12px; min-height: 88px; display: grid; grid-template-columns: minmax(360px, 1fr) auto auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+    .variant-b .dock-writeins { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .variant-b .dock-writeins .write-in-form { width: 240px; flex: 0 0 auto; }
+    .variant-b .dock-writeins .write-in-list { min-width: 0; flex-direction: row; margin: 0; overflow: auto; }
+    .variant-b .dock-status { min-width: 210px; padding-left: 14px; border-left: 1px solid var(--line); }
+    .variant-b .dock-actions { display: flex; gap: 8px; }
+
+    /* Variant C: exception-first workflow, with the changed choices as the main object. */
+    .variant-c { background: #f6f6f3; }
+    .variant-c .c-topbar { min-height: 72px; display: grid; grid-template-columns: 270px 1fr auto; align-items: center; gap: 20px; padding: 10px 22px; border-bottom: 2px solid #26312c; background: #fff; }
+    .variant-c .c-brand strong { display: block; font-size: 19px; }
+    .variant-c .c-brand span { color: var(--muted); font-size: 12px; }
+    .variant-c .c-center-nav { display: flex; justify-content: center; }
+    .variant-c .c-top-tools { display: flex; align-items: center; gap: 10px; }
+    .variant-c .c-main { height: calc(100vh - 72px); min-height: 580px; padding: 15px 20px 90px; }
+    .variant-c .c-entry { height: 100%; max-width: 1540px; margin: 0 auto; display: grid; grid-template-columns: 225px minmax(650px, 1fr) 280px; gap: 14px; }
+    .variant-c .c-control, .variant-c .c-exceptions { background: #fff; border: 1px solid var(--line); border-radius: 6px; overflow: auto; }
+    .variant-c .c-control { padding: 15px; }
+    .variant-c .c-control .election-tabs { flex-direction: column; align-items: stretch; }
+    .variant-c .c-control .election-tab { text-align: left; border: 1px solid var(--line); }
+    .variant-c .c-count-stack { display: grid; gap: 10px; margin: 18px 0; }
+    .variant-c .count-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+    .variant-c .count-line span { color: var(--muted); font-size: 12px; }
+    .variant-c .count-line strong { font-size: 24px; }
+    .variant-c .c-action-stack { display: grid; gap: 8px; }
+    .variant-c .c-candidate-zone { min-width: 0; display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+    .variant-c .zone-head { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+    .variant-c .exception-ledger { min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(300px, 1fr)); align-content: start; }
+    .variant-c .exception-row { min-height: 48px; display: grid; grid-template-columns: 30px minmax(70px, 1fr) auto; align-items: center; gap: 8px; padding: 6px 11px; border-bottom: 1px solid #e5e8e6; }
+    .variant-c .exception-row:nth-child(odd) { border-right: 1px solid #e5e8e6; }
+    .variant-c .exception-row.changed { background: #fff9e9; box-shadow: inset 4px 0 0 #c68c22; }
+    .variant-c .exception-row .segmented { min-width: 174px; }
+    .variant-c .c-exceptions { padding: 15px; }
+    .variant-c .exception-empty { margin-top: 12px; padding: 18px 12px; border: 1px dashed var(--line-strong); border-radius: 5px; color: var(--muted); font-size: 13px; text-align: center; line-height: 1.6; }
+    .variant-c .change-list { display: grid; gap: 6px; margin-top: 10px; }
+    .variant-c .change-item { min-height: 37px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 9px; border-radius: 5px; font-size: 13px; }
+    .variant-c .change-item.oppose { background: var(--red-soft); color: var(--red); }
+    .variant-c .change-item.abstain { background: var(--amber-soft); color: var(--amber); }
+    .variant-c .c-exceptions .write-in-block { padding-top: 13px; border-top: 1px solid var(--line); }
+
+    /* Shared results and history surfaces adapt to each shell. */
+    .content-page { max-width: 1280px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+    .content-title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+    .result-metrics { display: grid; grid-template-columns: repeat(3, minmax(130px, 1fr)); gap: 10px; }
+    .result-metrics .metric { padding: 14px 16px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    .result-table-wrap, .history-wrap { min-height: 0; flex: 1; overflow: auto; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { height: 43px; padding: 7px 13px; border-bottom: 1px solid #e5e9e7; text-align: left; font-size: 13px; }
+    th { position: sticky; top: 0; z-index: 1; color: #53615a; background: #f5f8f6; font-size: 12px; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    td.rank { width: 70px; font-size: 16px; font-weight: 800; }
+    tr.top-rank td { background: #fbfdfc; }
+    .candidate-type { display: inline-flex; min-height: 23px; align-items: center; padding: 0 7px; border-radius: 4px; background: #eef2f0; color: #5d6863; font-size: 11px; }
+    .candidate-type.writein { color: var(--blue); background: var(--blue-soft); }
+    .history-status { display: inline-flex; min-height: 24px; align-items: center; padding: 0 8px; border-radius: 4px; font-size: 11px; font-weight: 800; }
+    .history-status.valid { color: var(--green); background: var(--green-soft); }
+    .history-status.invalid { color: var(--red); background: var(--red-soft); }
+    .history-status.withdrawn { color: #68706c; background: #ecefed; }
+    .empty-page { min-height: 300px; display: grid; place-items: center; color: var(--muted); }
+
+    .prototype-switcher { position: fixed; z-index: 30; left: 50%; bottom: 18px; transform: translateX(-50%); height: 52px; display: grid; grid-template-columns: 42px minmax(170px, auto) 42px; align-items: center; padding: 4px; border: 1px solid #47534e; border-radius: 7px; color: #fff; background: #202925; box-shadow: var(--shadow); }
+    .prototype-switcher button { height: 42px; display: grid; place-items: center; border: 0; border-radius: 5px; color: #fff; background: transparent; }
+    .prototype-switcher button:hover { background: #36423d; }
+    .switcher-label { min-width: 0; padding: 0 11px; text-align: center; }
+    .switcher-label strong { display: block; font-size: 13px; white-space: nowrap; }
+    .switcher-label span { display: block; margin-top: 2px; color: #aebbb5; font-size: 10px; }
+    .state-inspector { position: fixed; z-index: 20; right: 16px; bottom: 19px; width: 180px; border: 1px solid #b8c0bc; border-radius: 6px; background: rgba(255,255,255,.96); box-shadow: 0 6px 20px rgba(27,38,32,.12); }
+    .state-inspector summary { padding: 9px 11px; cursor: pointer; color: #4f5c56; font-size: 11px; font-weight: 800; }
+    .state-inspector pre { max-height: 280px; margin: 0; padding: 10px; overflow: auto; border-top: 1px solid var(--line); background: #f7f9f8; font-size: 10px; white-space: pre-wrap; }
+    .toast { position: fixed; z-index: 40; top: 18px; left: 50%; transform: translate(-50%, -16px); opacity: 0; pointer-events: none; min-width: 250px; padding: 11px 14px; border-radius: 6px; color: #fff; background: #26332d; box-shadow: var(--shadow); text-align: center; transition: .2s ease; }
+    .toast.show { transform: translate(-50%, 0); opacity: 1; }
+
+    @media (max-width: 1180px) {
+      .variant-a .a-entry { grid-template-columns: minmax(620px, 1fr) 280px; }
+      .variant-a .candidate-ledger { grid-template-columns: 1fr; }
+      .variant-b .candidate-board { grid-template-columns: repeat(3, minmax(180px, 1fr)); }
+      .variant-b .ballot-dock { grid-template-columns: 1fr auto; }
+      .variant-b .dock-status { display: none; }
+      .variant-c .c-entry { grid-template-columns: 205px minmax(600px, 1fr); }
+      .variant-c .c-exceptions { display: none; }
+    }
+
+    @media (max-width: 860px) {
+      .connection, .prototype-tag { display: none; }
+      .variant-a .app-header { padding: 0 12px; }
+      .variant-a .brand-copy span { display: none; }
+      .variant-a .subnav { height: auto; min-height: 54px; padding: 7px 12px; gap: 8px; flex-wrap: wrap; }
+      .variant-a .a-main { height: auto; min-height: calc(100vh - 116px); padding: 10px 10px 92px; }
+      .variant-a .a-entry { height: auto; grid-template-columns: 1fr; }
+      .variant-a .candidate-ledger { max-height: 58vh; }
+      .variant-a .decision-rail { overflow: visible; }
+      .variant-b .b-header { padding-left: 74px; }
+      .variant-b .b-header-tools .connection { display: none; }
+      .variant-b .candidate-board { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+      .variant-b .ballot-dock { grid-template-columns: 1fr; }
+      .variant-b .dock-writeins { flex-wrap: wrap; }
+      .variant-b .dock-actions { justify-content: flex-end; }
+      .variant-c .c-topbar { grid-template-columns: 1fr auto; padding: 8px 12px; }
+      .variant-c .c-center-nav { grid-row: 2; grid-column: 1 / -1; justify-content: flex-start; overflow: auto; }
+      .variant-c .c-main { height: auto; padding: 10px 10px 92px; }
+      .variant-c .c-entry { height: auto; grid-template-columns: 1fr; }
+      .variant-c .c-control { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .variant-c .c-count-stack { margin: 0; }
+      .variant-c .exception-ledger { max-height: 62vh; }
+      .state-inspector { display: none; }
+      .content-title-row { align-items: flex-start; flex-direction: column; }
+      .group-gate-main { padding-top: 30px; }
+      .group-gate-intro { grid-template-columns: 1fr; align-items: start; }
+      .result-entry { width: 100%; }
+      .group-sections { grid-template-columns: 1fr; gap: 24px; }
+    }
+
+    @media (max-width: 560px) {
+      .role-select { min-width: 118px; max-width: 142px; }
+      .variant-a .header-tools { gap: 6px; }
+      .variant-a .candidate-row { grid-template-columns: 25px 1fr; }
+      .variant-a .candidate-row .segmented { grid-column: 2; width: 100%; min-width: 0; }
+      .variant-b .b-rail { display: none; }
+      .variant-b .b-header { padding: 0 10px; }
+      .variant-b .b-main { margin-left: 0; padding: 10px 8px 88px; }
+      .variant-b .b-title h1 { font-size: 15px; }
+      .variant-b .candidate-board { grid-template-columns: 1fr; }
+      .variant-b .ballot-toolbar { align-items: flex-start; flex-direction: column; }
+      .variant-b .dock-writeins .write-in-form { width: 100%; }
+      .variant-b .dock-actions { display: grid; grid-template-columns: 1fr 1fr; }
+      .variant-c .c-topbar { grid-template-columns: 1fr; }
+      .variant-c .c-top-tools { display: none; }
+      .variant-c .exception-ledger { grid-template-columns: 1fr; }
+      .variant-c .exception-row:nth-child(odd) { border-right: 0; }
+      .variant-c .c-control { grid-template-columns: 1fr; }
+      .result-metrics { grid-template-columns: 1fr 1fr 1fr; }
+      .result-metrics .metric { padding: 10px; }
+      .result-metrics .value { font-size: 20px; }
+      th, td { padding: 7px 8px; }
+      .prototype-switcher { bottom: 10px; }
+      .group-gate-header { height: auto; min-height: 64px; padding: 9px 12px; }
+      .group-gate-brand span, .group-gate-header-tools .connection { display: none; }
+      .group-gate-main { width: calc(100% - 24px); padding-top: 24px; }
+      .group-gate-intro h1 { font-size: 24px; }
+      .group-section-head { align-items: flex-start; flex-direction: column; }
+      .role-badge small { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script>
+    // Three variants of the election tallying workspace, switchable via ?variant=A|B|C on this standalone prototype page.
+    const ELECTIONS = {
+      union: {
+        shortName: '工会委员会',
+        name: '工会委员会委员选举',
+        maxApprovals: 23,
+        electorLimit: 180,
+        roles: ['union-1', 'union-2', 'union-3'],
+        candidates: ['王凯','元颖斌','邢辉','回申强','朱川红','朱阳','许亮','孙黎','苏建国','李斌','吴莹','汪致宏','张畅敏','张忠华','陈杰','陈晓斌','金一冰','金风保','周杰','姚亮','倪旭辉','徐洁','徐晓慧','黄立群','雷雯','虞珊君'],
+        base: { total: 86, valid: 84, invalid: 2 },
+        writeIns: [{ name: '陆晨', approve: 2, oppose: 0 }, { name: '赵明', approve: 1, oppose: 0 }]
+      },
+      expense: {
+        shortName: '经费审查委员会',
+        name: '经费审查委员会委员选举',
+        maxApprovals: 7,
+        electorLimit: 180,
+        roles: ['expense'],
+        candidates: ['李春君','金岚','周晓红','孟佳宁','赵芳芳','秦文炎','原瑜','程旸'],
+        base: { total: 43, valid: 42, invalid: 1 },
+        writeIns: [{ name: '沈宁', approve: 1, oppose: 0 }]
+      }
+    };
+
+    const ROLE_LABELS = {
+      'union-1': '工会第一组',
+      'union-2': '工会第二组',
+      'union-3': '工会第三组',
+      expense: '经审组'
+    };
+
+    const VARIANTS = {
+      A: '密集表格式',
+      B: '票面网格式',
+      C: '异常优先式'
+    };
+
+    const state = {
+      variant: readVariant(),
+      view: 'entry',
+      election: 'union',
+      role: null,
+      groupGateOpen: true,
+      drafts: {
+        union: makeDraft('union'),
+        expense: makeDraft('expense')
+      },
+      records: [
+        { id: 84, election: 'union', role: 'union-1', time: '15:26', status: 'valid', active: true, prototypeOnly: true },
+        { id: 85, election: 'union', role: 'union-1', time: '15:28', status: 'invalid', active: true, prototypeOnly: true },
+        { id: 86, election: 'union', role: 'union-1', time: '15:31', status: 'withdrawn', active: false, prototypeOnly: true }
+      ],
+      nextSequence: { union: 87, expense: 44 }
+    };
+
+    function readVariant() {
+      const value = new URLSearchParams(location.search).get('variant');
+      return VARIANTS[value] ? value : 'A';
+    }
+
+    function makeDraft(election) {
+      return {
+        choices: Object.fromEntries(ELECTIONS[election].candidates.map(name => [name, 'approve'])),
+        writeIns: []
+      };
+    }
+
+    function currentElection() { return ELECTIONS[state.election]; }
+    function currentDraft() { return state.drafts[state.election]; }
+    function electionForRole(role) { return role === 'expense' ? 'expense' : 'union'; }
+
+    function draftCounts() {
+      const values = Object.values(currentDraft().choices);
+      const approveListed = values.filter(value => value === 'approve').length;
+      const oppose = values.filter(value => value === 'oppose').length;
+      const abstain = values.filter(value => value === 'abstain').length;
+      const approvals = approveListed + currentDraft().writeIns.length;
+      const writeInCapacity = Math.max(0, oppose - currentDraft().writeIns.length);
+      return {
+        approveListed,
+        approvals,
+        oppose,
+        abstain,
+        writeInCapacity,
+        valid: approvals <= currentElection().maxApprovals
+      };
+    }
+
+    function mockCandidateResults(electionKey) {
+      const election = ELECTIONS[electionKey];
+      const submitted = state.records.filter(record => record.election === electionKey && record.active && !record.prototypeOnly && record.status === 'valid');
+      const rows = election.candidates.map((name, index) => {
+        const baseApprove = electionKey === 'union' ? 77 - Math.floor(index / 2) + (index % 3) : 39 - Math.floor(index / 2) + (index % 2);
+        const baseOppose = electionKey === 'union' ? 3 + (index % 7) : 1 + (index % 4);
+        return {
+          name,
+          type: '正式',
+          approve: baseApprove + submitted.filter(record => record.choices[name] === 'approve').length,
+          oppose: baseOppose + submitted.filter(record => record.choices[name] === 'oppose').length
+        };
+      });
+      const writeInMap = new Map(election.writeIns.map(item => [item.name, { ...item, type: '另选' }]));
+      submitted.flatMap(record => record.writeIns).forEach(name => {
+        const existing = writeInMap.get(name) || { name, type: '另选', approve: 0, oppose: 0 };
+        existing.approve += 1;
+        writeInMap.set(name, existing);
+      });
+      rows.push(...writeInMap.values());
+      rows.sort((a, b) => b.approve - a.approve || a.oppose - b.oppose || a.name.localeCompare(b.name, 'zh-CN-u-co-pinyin'));
+      let previous = null;
+      rows.forEach((row, index) => {
+        if (!previous || row.approve !== previous.approve || row.oppose !== previous.oppose) row.rank = index + 1;
+        else row.rank = previous.rank;
+        previous = row;
+      });
+      return rows;
+    }
+
+    function electionTotals(electionKey) {
+      const election = ELECTIONS[electionKey];
+      const records = state.records.filter(record => record.election === electionKey && !record.prototypeOnly && record.active);
+      return {
+        total: election.base.total + records.length,
+        valid: election.base.valid + records.filter(record => record.status === 'valid').length,
+        invalid: election.base.invalid + records.filter(record => record.status === 'invalid').length
+      };
+    }
+
+    function icon(name, label = '') {
+      return `<i data-lucide="${name}" class="icon"${label ? ` aria-label="${escapeHtml(label)}"` : ' aria-hidden="true"'}></i>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
+    }
+
+    function prototypeTag() {
+      return `<span class="prototype-tag">${icon('flask-conical')} 页面原型</span>`;
+    }
+
+    function connection() {
+      return `<span class="connection">服务器已连接</span>`;
+    }
+
+    function roleIdentity() {
+      if (!state.role) return `<button type="button" class="btn" data-action="switch-group">${icon('users')} 选择录入组</button>`;
+      const fixedElection = ELECTIONS[electionForRole(state.role)];
+      return `<div class="role-identity">
+        <div class="role-badge">${icon('users')} <span>${ROLE_LABELS[state.role]}</span><small>${fixedElection.shortName}</small></div>
+        <button type="button" class="btn icon-only ghost" data-action="switch-group" title="切换录入组">${icon('repeat-2')}</button>
+      </div>`;
+    }
+
+    function lockedElectionLabel() {
+      return `<div class="locked-election"><strong>${currentElection().name}</strong><span>由当前录入组固定</span></div>`;
+    }
+
+    function viewTabs(rail = false) {
+      const items = [
+        ['entry', 'square-pen', '选票录入'],
+        ['history', 'history', '录入历史'],
+        ['results', 'chart-no-axes-column-increasing', '实时结果']
+      ];
+      if (rail) return `<nav class="rail-nav">${items.map(([value, iconName, label]) => `<button type="button" class="${state.view === value ? 'active' : ''}" data-action="view" data-view="${value}">${icon(iconName)}<span>${label.replace('选票','').replace('录入','历史')}</span></button>`).join('')}</nav>`;
+      return `<nav class="view-tabs">${items.map(([value, iconName, label]) => `<button type="button" class="view-tab ${state.view === value ? 'active' : ''}" data-action="view" data-view="${value}">${icon(iconName)} ${label}</button>`).join('')}</nav>`;
+    }
+
+    function electionTabs() {
+      return `<div class="election-tabs">
+        ${Object.entries(ELECTIONS).map(([key, election]) => `<button type="button" class="election-tab ${state.election === key ? 'active' : ''}" data-action="election" data-election="${key}">${election.shortName}</button>`).join('')}
+      </div>`;
+    }
+
+    function renderGroupGate() {
+      const unionOptions = ['union-1', 'union-2', 'union-3'].map((role, index) => `<button type="button" class="group-option" data-action="select-role" data-role="${role}">
+        <span class="group-option-icon">${icon('users')}</span>
+        <span><strong>${ROLE_LABELS[role]}</strong><span>录入工会委员会委员选票</span></span>
+        ${icon('chevron-right')}
+      </button>`).join('');
+      const expenseOption = `<button type="button" class="group-option" data-action="select-role" data-role="expense">
+        <span class="group-option-icon">${icon('user-round-check')}</span>
+        <span><strong>${ROLE_LABELS.expense}</strong><span>录入经费审查委员会委员选票</span></span>
+        ${icon('chevron-right')}
+      </button>`;
+      return `<div class="group-gate-page">
+        <header class="group-gate-header">
+          <div class="group-gate-brand"><span class="group-gate-mark">${icon('list-checks')}</span><span><strong>选举计票助手</strong><span>上海燃气有限公司工会第二届“两委”委员选举</span></span></div>
+          <div class="group-gate-header-tools">${prototypeTag()}${connection()}</div>
+        </header>
+        <main class="group-gate-main">
+          <section class="group-gate-intro">
+            <div><p class="group-gate-kicker">录入身份确认</p><h1>请选择本机计票组别</h1><p>组别决定本机可录入的选票类型。进入后仍可查看两项选举的全部实时结果。</p></div>
+            <button type="button" class="btn result-entry" data-action="public-results">${icon('chart-no-axes-column-increasing')} 直接查看实时结果</button>
+          </section>
+          <div class="group-sections">
+            <section class="group-section">
+              <header class="group-section-head"><div><h2>工会委员会计票组</h2><p>三组分摊不同实体选票，每票只录入一次</p></div><span class="election-lock">${icon('lock-keyhole')} 工会委员会</span></header>
+              <div class="group-options">${unionOptions}</div>
+            </section>
+            <section class="group-section">
+              <header class="group-section-head"><div><h2>经费审查委员会计票组</h2><p>由经审组独立完成录入</p></div><span class="election-lock">${icon('lock-keyhole')} 经费审查委员会</span></header>
+              <div class="group-options">${expenseOption}</div>
+            </section>
+          </div>
+          <p class="group-gate-note">组别仅用于确定录入范围和撤销权限，不影响实时结果查看。需要更换本机用途时，可在进入后通过顶部“切换录入组”返回本页。</p>
+        </main>
+      </div>`;
+    }
+
+    function choiceButtons(name) {
+      const value = currentDraft().choices[name];
+      return `<div class="segmented" role="group" aria-label="${escapeHtml(name)}的选择">
+        ${[['approve','赞成'],['oppose','反对'],['abstain','弃权']].map(([choice, label]) => `<button type="button" data-action="choice" data-candidate="${escapeHtml(name)}" data-choice="${choice}" data-selected="${value === choice}">${label}</button>`).join('')}
+      </div>`;
+    }
+
+    function candidateRowsA() {
+      return currentElection().candidates.map((name, index) => {
+        const changed = currentDraft().choices[name] !== 'approve';
+        return `<div class="candidate-row ${changed ? 'changed' : ''}">
+          <span class="candidate-no">${String(index + 1).padStart(2, '0')}</span>
+          <span class="candidate-name">${name}</span>
+          ${choiceButtons(name)}
+        </div>`;
+      }).join('');
+    }
+
+    function candidateTilesB() {
+      return currentElection().candidates.map((name, index) => {
+        const changed = currentDraft().choices[name] !== 'approve';
+        return `<div class="candidate-tile ${changed ? 'changed' : ''}">
+          <div class="tile-top"><span class="tile-name">${name}</span><span class="tile-no">${String(index + 1).padStart(2, '0')}</span></div>
+          ${choiceButtons(name)}
+        </div>`;
+      }).join('');
+    }
+
+    function candidateRowsC() {
+      return currentElection().candidates.map((name, index) => {
+        const changed = currentDraft().choices[name] !== 'approve';
+        return `<div class="exception-row ${changed ? 'changed' : ''}">
+          <span class="candidate-no">${String(index + 1).padStart(2, '0')}</span>
+          <strong>${name}</strong>
+          ${choiceButtons(name)}
+        </div>`;
+      }).join('');
+    }
+
+    function statusPill() {
+      const counts = draftCounts();
+      if (counts.valid) return `<span class="status-pill valid">${icon('circle-check')} 当前为有效票</span>`;
+      return `<span class="status-pill invalid">${icon('triangle-alert')} 超额 ${counts.approvals - currentElection().maxApprovals} 人</span>`;
+    }
+
+    function validityBlock() {
+      const counts = draftCounts();
+      return `<div class="validity-block ${counts.valid ? 'valid' : ''}">
+        <strong>${counts.valid ? '当前票符合人数规则' : '当前票将计为无效票'}</strong><br>
+        赞成总数 ${counts.approvals}，应选不超过 ${currentElection().maxApprovals} 人。
+      </div>`;
+    }
+
+    function writeInBlock(compact = false) {
+      const counts = draftCounts();
+      const items = currentDraft().writeIns.map((name, index) => `<div class="write-in-item"><span>${escapeHtml(name)}</span><button type="button" data-action="remove-writein" data-index="${index}" title="移除另选人">${icon('x')}</button></div>`).join('');
+      return `<div class="write-in-block ${compact ? 'compact' : ''}">
+        <div class="write-in-head"><strong>另选人</strong><span>还可填写 ${counts.writeInCapacity} 人</span></div>
+        <form class="write-in-form" data-action="writein-form">
+          <input name="writein" autocomplete="off" placeholder="输入姓名" aria-label="另选人姓名">
+          <button class="btn icon-only" type="submit" title="添加另选人">${icon('plus')}</button>
+        </form>
+        <div class="write-in-list">${items || '<span class="muted" style="font-size:12px">暂无另选人</span>'}</div>
+      </div>`;
+    }
+
+    function entryActions() {
+      return `<div class="entry-actions">
+        <button type="button" class="btn primary" data-action="submit">${icon('check')} 提交本票</button>
+        <button type="button" class="btn danger" data-action="manual-invalid">${icon('ban')} 记为无效票</button>
+      </div>`;
+    }
+
+    function renderEntryA() {
+      return `<div class="a-entry">
+        <section class="ballot-panel">
+          <header class="panel-head">
+            <div><h2 class="section-heading">${currentElection().name}</h2><p class="section-subtitle">第 ${state.nextSequence[state.election]} 张 · 所有候选人默认赞成</p></div>
+            ${statusPill()}
+          </header>
+          <div class="candidate-ledger">${candidateRowsA()}</div>
+        </section>
+        <aside class="decision-rail">
+          <h2 class="section-heading">本票汇总</h2>
+          <div class="rail-metrics">
+            ${metric('赞成', draftCounts().approvals)}${metric('反对', draftCounts().oppose)}${metric('弃权', draftCounts().abstain)}
+          </div>
+          ${validityBlock()}
+          ${writeInBlock()}
+          ${entryActions()}
+        </aside>
+      </div>`;
+    }
+
+    function renderEntryB() {
+      const counts = draftCounts();
+      return `<div class="ballot-toolbar">
+        <div class="toolbar-left"><div><h2 class="section-heading">${currentElection().name}</h2><p class="section-subtitle">第 ${state.nextSequence[state.election]} 张选票</p></div>${statusPill()}</div>
+        <div class="toolbar-stats"><span class="mini-stat">赞成 <strong>${counts.approvals}</strong></span><span class="mini-stat">反对 <strong>${counts.oppose}</strong></span><span class="mini-stat">弃权 <strong>${counts.abstain}</strong></span></div>
+      </div>
+      <section class="candidate-board">${candidateTilesB()}</section>
+      <section class="ballot-dock">
+        <div class="dock-writeins">${writeInBlock(true)}</div>
+        <div class="dock-status">${validityBlock()}</div>
+        <div class="dock-actions"><button type="button" class="btn danger" data-action="manual-invalid">${icon('ban')} 无效票</button><button type="button" class="btn primary" data-action="submit">${icon('check')} 提交本票</button></div>
+      </section>`;
+    }
+
+    function changeSummary() {
+      const changes = Object.entries(currentDraft().choices).filter(([, value]) => value !== 'approve');
+      if (!changes.length) return '<div class="exception-empty">所有正式候选人当前均为赞成。<br>只需修改纸票上的反对和弃权项。</div>';
+      return `<div class="change-list">${changes.map(([name, value]) => `<div class="change-item ${value}"><strong>${name}</strong><span>${value === 'oppose' ? '反对' : '弃权'}</span></div>`).join('')}</div>`;
+    }
+
+    function renderEntryC() {
+      const counts = draftCounts();
+      return `<div class="c-entry">
+        <aside class="c-control">
+          <div>${lockedElectionLabel()}</div>
+          <div class="c-count-stack">
+            <div class="count-line"><span>赞成</span><strong>${counts.approvals}</strong></div>
+            <div class="count-line"><span>反对</span><strong>${counts.oppose}</strong></div>
+            <div class="count-line"><span>弃权</span><strong>${counts.abstain}</strong></div>
+          </div>
+          <div class="c-action-stack">${validityBlock()}${entryActions()}</div>
+        </aside>
+        <section class="c-candidate-zone">
+          <header class="zone-head"><div><h2 class="section-heading">${currentElection().name}</h2><p class="section-subtitle">第 ${state.nextSequence[state.election]} 张 · 请只改动非赞成项</p></div>${statusPill()}</header>
+          <div class="exception-ledger">${candidateRowsC()}</div>
+        </section>
+        <aside class="c-exceptions">
+          <h2 class="section-heading">本票变更</h2>
+          <p class="section-subtitle">相对“全部赞成”的修改</p>
+          ${changeSummary()}
+          ${writeInBlock()}
+        </aside>
+      </div>`;
+    }
+
+    function metric(label, value) {
+      return `<div class="metric"><div class="value">${value}</div><div class="label">${label}</div></div>`;
+    }
+
+    function renderResults() {
+      const totals = electionTotals(state.election);
+      const rows = mockCandidateResults(state.election);
+      return `<section class="content-page">
+        <div class="content-title-row">
+          <div><h2 class="section-heading">实时结果</h2><p class="section-subtitle">${currentElection().name} · 自动更新</p></div>
+          ${electionTabs()}
+        </div>
+        <div class="result-metrics">${metric('已录入', totals.total)}${metric('有效票', totals.valid)}${metric('无效票', totals.invalid)}</div>
+        <div class="result-table-wrap">
+          <table>
+            <thead><tr><th>名次</th><th>候选人</th><th>类型</th><th class="num">赞成票</th><th class="num">反对票</th></tr></thead>
+            <tbody>${rows.map(row => `<tr class="${row.rank <= currentElection().maxApprovals ? 'top-rank' : ''}"><td class="rank">${row.rank}</td><td><strong>${row.name}</strong></td><td><span class="candidate-type ${row.type === '另选' ? 'writein' : ''}">${row.type}</span></td><td class="num"><strong>${row.approve}</strong></td><td class="num">${row.oppose}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </section>`;
+    }
+
+    function renderHistory() {
+      const records = state.records.filter(record => record.election === state.election && record.role === state.role);
+      return `<section class="content-page">
+        <div class="content-title-row">
+          <div><h2 class="section-heading">录入历史</h2><p class="section-subtitle">${ROLE_LABELS[state.role]} · 仅能撤销本组记录</p></div>
+          ${lockedElectionLabel()}
+        </div>
+        <div class="history-wrap">
+          ${records.length ? `<table><thead><tr><th>序号</th><th>提交时间</th><th>状态</th><th class="num">操作</th></tr></thead><tbody>${records.slice().reverse().map(record => `<tr><td class="mono">#${record.id}</td><td>${record.time}</td><td><span class="history-status ${record.active ? record.status : 'withdrawn'}">${record.active ? (record.status === 'valid' ? '有效' : '无效') : '已撤销'}</span></td><td class="num">${record.active ? `<button type="button" class="btn danger" data-action="withdraw" data-id="${record.id}">撤销</button>` : '—'}</td></tr>`).join('')}</tbody></table>` : '<div class="empty-page">当前录入组暂无记录</div>'}
+        </div>
+      </section>`;
+    }
+
+    function renderActiveView(variant) {
+      if (state.view === 'results') return renderResults();
+      if (state.view === 'history') return renderHistory();
+      if (variant === 'A') return renderEntryA();
+      if (variant === 'B') return renderEntryB();
+      return renderEntryC();
+    }
+
+    function renderVariantA() {
+      return `<div class="variant-a">
+        <header class="app-header"><div class="brand"><div class="brand-mark">${icon('list-checks')}</div><div class="brand-copy"><strong>选举计票助手</strong><span>上海燃气工会第二届“两委”委员选举</span></div>${prototypeTag()}</div><div class="header-tools">${connection()}${roleIdentity()}</div></header>
+        <div class="subnav">${viewTabs()}${state.view === 'entry' ? lockedElectionLabel() : ''}</div>
+        <main class="a-main">${renderActiveView('A')}</main>
+      </div>`;
+    }
+
+    function renderVariantB() {
+      return `<div class="variant-b">
+        <aside class="b-rail"><div class="rail-logo">${icon('vote')}</div>${viewTabs(true)}</aside>
+        <header class="b-header"><div class="b-title"><h1>两委选举计票</h1>${prototypeTag()}</div><div class="b-header-tools">${connection()}${roleIdentity()}</div></header>
+        <main class="b-main">${state.view === 'entry' ? lockedElectionLabel() : ''}${renderActiveView('B')}</main>
+      </div>`;
+    }
+
+    function renderVariantC() {
+      return `<div class="variant-c">
+        <header class="c-topbar"><div class="c-brand"><strong>选举计票助手</strong><span>非赞成项优先录入</span></div><div class="c-center-nav">${viewTabs()}</div><div class="c-top-tools">${prototypeTag()}${connection()}${roleIdentity()}</div></header>
+        <main class="c-main">${renderActiveView('C')}</main>
+      </div>`;
+    }
+
+    function switcher() {
+      return `<div class="prototype-switcher" aria-label="原型布局切换">
+        <button type="button" data-action="variant-prev" title="上一个布局">${icon('arrow-left')}</button>
+        <div class="switcher-label"><strong>${state.variant} · ${VARIANTS[state.variant]}</strong><span>键盘 ← → 切换布局</span></div>
+        <button type="button" data-action="variant-next" title="下一个布局">${icon('arrow-right')}</button>
+      </div>`;
+    }
+
+    function stateInspector() {
+      const counts = draftCounts();
+      const visible = {
+        variant: state.variant,
+        view: state.view,
+        election: state.election,
+        role: state.role,
+        nextSequence: state.nextSequence[state.election],
+        draft: { ...counts, writeIns: currentDraft().writeIns, choices: currentDraft().choices }
+      };
+      return `<details class="state-inspector"><summary>查看原型状态</summary><pre>${escapeHtml(JSON.stringify(visible, null, 2))}</pre></details>`;
+    }
+
+    function render() {
+      document.body.className = state.groupGateOpen ? 'group-gate-mode' : `variant-${state.variant.toLowerCase()}`;
+      const body = state.groupGateOpen ? renderGroupGate() : state.variant === 'A' ? renderVariantA() : state.variant === 'B' ? renderVariantB() : renderVariantC();
+      document.getElementById('app').innerHTML = body + switcher() + stateInspector();
+      if (window.lucide) window.lucide.createIcons({ attrs: { 'aria-hidden': 'true' } });
+    }
+
+    function setVariant(next) {
+      state.variant = next;
+      const url = new URL(location.href);
+      url.searchParams.set('variant', next);
+      try { history.replaceState({}, '', url); } catch (_) { /* file URLs can restrict history changes */ }
+      render();
+    }
+
+    function cycleVariant(direction) {
+      const keys = Object.keys(VARIANTS);
+      const index = keys.indexOf(state.variant);
+      setVariant(keys[(index + direction + keys.length) % keys.length]);
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    function validateWriteIn(name) {
+      const normalized = name.trim();
+      if (!normalized) return '请输入另选人姓名';
+      if (currentElection().candidates.includes(normalized)) return '另选人不能与正式候选人同名';
+      if (currentDraft().writeIns.includes(normalized)) return '同一张票不能重复填写另选人';
+      if (currentDraft().writeIns.length >= draftCounts().oppose) return '另选人数不能超过反对人数';
+      return '';
+    }
+
+    function submitRecord(manualInvalid = false) {
+      const counts = draftCounts();
+      if (currentDraft().writeIns.length > counts.oppose) {
+        alert('另选人数不能超过反对人数，请先修正。');
+        return;
+      }
+      const invalid = manualInvalid || !counts.valid;
+      const message = manualInvalid ? '确认将本票直接记为无效票？' : invalid ? `当前赞成 ${counts.approvals} 人，超过应选 ${currentElection().maxApprovals} 人。确认作为无效票提交？` : '';
+      if (message && !confirm(message)) return;
+      const now = new Date();
+      const id = state.nextSequence[state.election]++;
+      state.records.push({
+        id,
+        election: state.election,
+        role: state.role,
+        time: now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+        status: invalid ? 'invalid' : 'valid',
+        active: true,
+        prototypeOnly: false,
+        choices: { ...currentDraft().choices },
+        writeIns: [...currentDraft().writeIns]
+      });
+      state.drafts[state.election] = makeDraft(state.election);
+      showToast(`第 ${id} 号选票已提交${invalid ? '，计为无效票' : ''}`);
+      render();
+    }
+
+    document.addEventListener('click', event => {
+      const target = event.target.closest('[data-action]');
+      if (!target) return;
+      const action = target.dataset.action;
+      if (action === 'variant-prev') cycleVariant(-1);
+      if (action === 'variant-next') cycleVariant(1);
+      if (action === 'select-role') {
+        state.role = target.dataset.role;
+        state.election = electionForRole(state.role);
+        state.view = 'entry';
+        state.groupGateOpen = false;
+        render();
+      }
+      if (action === 'switch-group') {
+        state.role = null;
+        state.groupGateOpen = true;
+        render();
+      }
+      if (action === 'public-results') {
+        state.role = null;
+        state.election = 'union';
+        state.view = 'results';
+        state.groupGateOpen = false;
+        render();
+      }
+      if (action === 'view') {
+        const nextView = target.dataset.view;
+        if (nextView !== 'results' && !state.role) {
+          state.groupGateOpen = true;
+        } else {
+          state.view = nextView;
+          if (nextView !== 'results') state.election = electionForRole(state.role);
+        }
+        render();
+      }
+      if (action === 'election') {
+        if (state.view !== 'results') return;
+        state.election = target.dataset.election;
+        render();
+      }
+      if (action === 'choice') {
+        currentDraft().choices[target.dataset.candidate] = target.dataset.choice;
+        while (currentDraft().writeIns.length > draftCounts().oppose) currentDraft().writeIns.pop();
+        render();
+      }
+      if (action === 'remove-writein') { currentDraft().writeIns.splice(Number(target.dataset.index), 1); render(); }
+      if (action === 'submit') submitRecord(false);
+      if (action === 'manual-invalid') submitRecord(true);
+      if (action === 'withdraw') {
+        const record = state.records.find(item => item.id === Number(target.dataset.id) && item.election === state.election);
+        if (record && confirm(`确认撤销第 ${record.id} 号选票？`)) { record.active = false; showToast(`第 ${record.id} 号选票已撤销`); render(); }
+      }
+    });
+
+    document.addEventListener('submit', event => {
+      if (event.target.dataset.action !== 'writein-form') return;
+      event.preventDefault();
+      const input = event.target.elements.writein;
+      const error = validateWriteIn(input.value);
+      if (error) { alert(error); input.focus(); return; }
+      currentDraft().writeIns.push(input.value.trim());
+      render();
+    });
+
+    document.addEventListener('keydown', event => {
+      const interactive = event.target.matches('input, textarea, select, [contenteditable="true"]');
+      if (interactive) return;
+      if (event.key === 'ArrowLeft') cycleVariant(-1);
+      if (event.key === 'ArrowRight') cycleVariant(1);
+    });
+
+    render();
+  </script>
+</body>
+</html>
