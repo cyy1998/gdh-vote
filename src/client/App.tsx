@@ -208,7 +208,16 @@ function Recorder({
   const electionId = RECORDING_GROUPS[groupId].electionId;
   const election = ELECTIONS[electionId];
   const [draft, setDraft] = useState(() => loadDraft(electionId, generation));
-  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [submissionNotice, setSubmissionNotice] = useState<{
+    sequence: number;
+    valid: boolean;
+  } | null>(null);
+  const [pendingSubmission, setPendingSubmission] = useState<{
+    draft: BallotDraft;
+    kind: "manual" | "overvote";
+    approvals: number;
+  } | null>(null);
   const validation = useMemo(() => validateDraft(draft), [draft]);
   useEffect(() => {
     if (generation > 0)
@@ -217,27 +226,21 @@ function Recorder({
         JSON.stringify({ generation, draft }),
       );
   }, [draft, electionId, generation]);
+  useEffect(() => {
+    if (submissionNotice === null) return;
+    const timeout = window.setTimeout(() => setSubmissionNotice(null), 1000);
+    return () => window.clearTimeout(timeout);
+  }, [submissionNotice]);
   const setChoice = (name: string, choice: Choice) =>
     setDraft((current) => ({
       ...current,
       choices: { ...current.choices, [name]: choice },
     }));
-  const submit = async (manualInvalid = false) => {
-    const next = { ...draft, manualInvalid };
-    const checked = validateDraft(next);
-    if (!checked.canSubmit) return setMessage(checked.errors.join("；"));
-    if (
-      (manualInvalid || checked.overvote) &&
-      !confirm(
-        manualInvalid
-          ? "确认将本票记为人工无效票？无需填写原因，候选人票数不计入统计。"
-          : `本票赞成 ${checked.approvals} 人，超过应选 ${election.seatCount} 人。确认作为无效票提交？`,
-      )
-    )
-      return;
+  const performSubmission = async (next: BallotDraft) => {
     try {
       const record = await api.submit(groupId, next);
-      setMessage(`提交成功：服务器已分配第 ${record.sequence} 号选票`);
+      setErrorMessage("");
+      setSubmissionNotice({ sequence: record.sequence, valid: record.valid });
       const empty = createDefaultDraft(electionId);
       setDraft(empty);
       localStorage.setItem(
@@ -245,11 +248,93 @@ function Recorder({
         JSON.stringify({ generation, draft: empty }),
       );
     } catch (error) {
-      setMessage((error as Error).message);
+      setSubmissionNotice(null);
+      setErrorMessage((error as Error).message);
     }
+  };
+  const requestSubmission = (manualInvalid = false) => {
+    const next = { ...draft, manualInvalid };
+    const checked = validateDraft(next);
+    if (!checked.canSubmit) return setErrorMessage(checked.errors.join("；"));
+    if (manualInvalid || checked.overvote) {
+      setPendingSubmission({
+        draft: next,
+        kind: manualInvalid ? "manual" : "overvote",
+        approvals: checked.approvals,
+      });
+      return;
+    }
+    void performSubmission(next);
   };
   return (
     <>
+      {submissionNotice !== null && (
+        <div
+          className={`submit-toast ${submissionNotice.valid ? "" : "invalid"}`}
+          role="status"
+          aria-live="assertive"
+        >
+          <span className="submit-toast-icon" aria-hidden="true">
+            ✓
+          </span>
+          <strong className="submit-toast-copy">
+            第 {submissionNotice.sequence} 号
+            {submissionNotice.valid ? "选票" : "无效票"}录入成功
+          </strong>
+          <button
+            type="button"
+            aria-label="关闭录入提示"
+            onClick={() => setSubmissionNotice(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {pendingSubmission !== null && (
+        <div className="confirm-overlay">
+          <section
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invalid-confirm-title"
+          >
+            <span className="confirm-dialog-mark" aria-hidden="true">
+              !
+            </span>
+            <h3 id="invalid-confirm-title">
+              {pendingSubmission.kind === "manual"
+                ? "确认记为无效票？"
+                : "确认提交超额无效票？"}
+            </h3>
+            <p>
+              {pendingSubmission.kind === "manual"
+                ? "本票只计入无效票总数，不计入任何候选人票数。"
+                : `本票赞成 ${pendingSubmission.approvals} 人，超过应选 ${election.seatCount} 人，将作为无效票计入。`}
+            </p>
+            <div className="confirm-dialog-actions">
+              <button
+                type="button"
+                className="confirm-cancel"
+                autoFocus
+                onClick={() => setPendingSubmission(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="confirm-danger"
+                onClick={() => {
+                  const next = pendingSubmission.draft;
+                  setPendingSubmission(null);
+                  void performSubmission(next);
+                }}
+              >
+                确认记为无效票
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       <div className="page-heading">
         <div>
           <span className="eyebrow">当前录入</span>
@@ -375,15 +460,18 @@ function Recorder({
           {validation.errors.length > 0 && (
             <div className="error">{validation.errors.join("；")}</div>
           )}
-          {message && <div className="message">{message}</div>}
+          {errorMessage && <div className="error">{errorMessage}</div>}
           <button
             className="primary"
             disabled={!validation.canSubmit}
-            onClick={() => submit(false)}
+            onClick={() => requestSubmission(false)}
           >
             提交本票
           </button>
-          <button className="danger-outline" onClick={() => submit(true)}>
+          <button
+            className="danger-outline"
+            onClick={() => requestSubmission(true)}
+          >
             记为无效票
           </button>
         </aside>

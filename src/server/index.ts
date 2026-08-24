@@ -1,9 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
+import { loadEnvFile } from "node:process";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app.js";
 import { createTallyRepository } from "./repository.js";
+
+const envFile = path.resolve(".env");
+if (fs.existsSync(envFile)) loadEnvFile(envFile);
 
 const dataDirectory = path.resolve(process.env.DATA_DIR ?? "data");
 fs.mkdirSync(dataDirectory, { recursive: true });

@@ -325,6 +325,125 @@ header .link {
   color: #245b4a;
   background: #e9f4ef;
 }
+.submit-toast {
+  position: fixed;
+  z-index: 20;
+  top: 96px;
+  left: 50%;
+  width: min(350px, calc(100vw - 32px));
+  padding: 11px 13px;
+  display: grid;
+  grid-template-columns: 34px 1fr 24px;
+  align-items: center;
+  gap: 10px;
+  color: white;
+  background: #17634f;
+  border: 1px solid #0c4c3c;
+  border-radius: 6px;
+  box-shadow: 0 12px 35px #102f2770;
+  transform: translateX(-50%);
+  animation: submit-toast-in 180ms ease-out;
+}
+.submit-toast.invalid {
+  background: #9c4635;
+  border-color: #793225;
+  box-shadow: 0 12px 35px #4b1d1870;
+}
+.submit-toast.invalid .submit-toast-icon {
+  color: #943f30;
+}
+.submit-toast-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: #185c4a;
+  background: white;
+  border-radius: 50%;
+  font-size: 21px;
+  font-weight: 900;
+}
+.submit-toast-copy {
+  font-size: 16px;
+}
+.submit-toast > button {
+  padding: 2px;
+  color: #d9ebe5;
+  background: transparent;
+  border: 0;
+  font-size: 21px;
+}
+@keyframes submit-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+.confirm-overlay {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #10251f99;
+  backdrop-filter: blur(2px);
+}
+.confirm-dialog {
+  width: min(430px, 100%);
+  padding: 27px 28px 24px;
+  background: white;
+  border-top: 5px solid #a84c39;
+  box-shadow: 0 18px 55px #10231d59;
+  text-align: center;
+}
+.confirm-dialog-mark {
+  width: 42px;
+  height: 42px;
+  margin: 0 auto 12px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: #a84c39;
+  border-radius: 50%;
+  font-size: 25px;
+  font-weight: 900;
+}
+.confirm-dialog h3 {
+  margin: 0 0 8px;
+  color: #633128;
+  font-size: 21px;
+}
+.confirm-dialog p {
+  margin: 0;
+  color: #666b68;
+  line-height: 1.65;
+}
+.confirm-dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 10px;
+  margin-top: 22px;
+}
+.confirm-dialog-actions button {
+  min-height: 42px;
+  border-radius: 3px;
+  font-weight: 800;
+}
+.confirm-cancel {
+  color: #4f5652;
+  background: white;
+  border: 1px solid #c9c5bc;
+}
+.confirm-danger {
+  color: white;
+  background: #a44734;
+  border: 1px solid #8e3929;
+}
 .entrance {
   max-width: 900px;
   margin: 38px auto;
