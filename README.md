@@ -35,9 +35,25 @@ Copy-Item .env.example .env
 PORT=3000
 DATA_DIR=data
 ADMIN_PASSWORD_HASH=生成的值
+ACCESS_USERNAME=shrq
+ACCESS_PASSWORD=设置一个仅供现场人员使用的访问口令
 ```
 
-`.env` 已被 Git 忽略。操作系统中已设置的同名环境变量优先于 `.env`。未配置管理员口令时，正常录入、历史和结果功能可用，清空接口会明确返回“管理员口令尚未配置”。不要给服务端机密配置添加 `VITE_` 前缀，因为该前缀用于暴露前端构建变量。
+`.env` 已被 Git 忽略。操作系统中已设置的同名环境变量优先于 `.env`。`ACCESS_USERNAME` 可省略，默认用户名为 `shrq`；`ACCESS_PASSWORD` 必须配置，否则服务会拒绝启动。浏览器首次访问时会显示原生 HTTP 登录框，验证后页面、静态资源和全部接口才可访问。
+
+管理员口令与站点访问口令相互独立。未配置管理员口令时，正常录入、历史和结果功能可用，清空接口会明确返回“管理员口令尚未配置”。不要给服务端机密配置添加 `VITE_` 前缀，因为该前缀用于暴露前端构建变量。
+
+HTTP Basic Auth 本身不加密口令，只应在受信任的局域网内使用；如果服务会经过不受信任的网络，请在前方配置 HTTPS 反向代理。
+
+### 部署到子路径
+
+如果站点通过 `/vote-tallying/` 等子路径访问，在构建前配置：
+
+```dotenv
+TALLY_BASE_PATH=/vote-tallying/
+```
+
+Vite 会据此生成静态资源、API 和实时事件连接地址，服务端也会直接挂载到同一子路径。反向代理应保留该前缀，例如外部的 `/vote-tallying/api/results/union` 仍转发为服务端的 `/vote-tallying/api/results/union`。未配置时默认使用域名根路径 `/`。
 
 ## 验证
 

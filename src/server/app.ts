@@ -1,5 +1,7 @@
 import { scryptSync, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
+import { basicAuth } from "hono/basic-auth";
+import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import {
@@ -8,6 +10,7 @@ import {
   type ElectionId,
   type RecordingGroupId,
 } from "../shared/domain.js";
+import { normalizeBasePath } from "./base-path.js";
 import { TallyError, type TallyRepository } from "./repository.js";
 
 type SyncState = ReturnType<TallyRepository["syncState"]>;
@@ -44,9 +47,25 @@ function verifyPassword(password: string, encoded?: string) {
 
 export function createApp(
   repository: TallyRepository,
-  options: { adminPasswordHash?: string } = {},
+  options: {
+    adminPasswordHash?: string;
+    accessCredentials?: { username: string; password: string };
+    basePath?: string;
+  } = {},
 ) {
   const app = new Hono();
+  if (options.accessCredentials) {
+    app.use(
+      "*",
+      basicAuth({
+        ...options.accessCredentials,
+        realm: "Election Tallying",
+        invalidUserMessage: "需要访问口令",
+      }),
+    );
+  }
+  const basePath = normalizeBasePath(options.basePath);
+  const routes = basePath ? app.basePath(basePath) : app;
   const listeners = new Set<VersionListener>();
   const notify = () => {
     const state = repository.syncState();
@@ -54,6 +73,7 @@ export function createApp(
   };
 
   app.onError((error, c) => {
+    if (error instanceof HTTPException) return error.getResponse();
     if (error instanceof TallyError)
       return c.json(
         { error: error.message, code: error.code },
@@ -66,24 +86,24 @@ export function createApp(
     );
   });
 
-  app.get("/api/config", (c) =>
+  routes.get("/api/config", (c) =>
     c.json({
       elections: ELECTIONS,
       recordingGroups: RECORDING_GROUPS,
       ...repository.syncState(),
     }),
   );
-  app.get("/api/results/:electionId", (c) => {
+  routes.get("/api/results/:electionId", (c) => {
     const electionId = c.req.param("electionId") as ElectionId;
     if (!ELECTIONS[electionId]) return c.json({ error: "未知选举" }, 404);
     return c.json(repository.result(electionId));
   });
-  app.get("/api/history/:groupId", (c) => {
+  routes.get("/api/history/:groupId", (c) => {
     const groupId = c.req.param("groupId") as RecordingGroupId;
     if (!RECORDING_GROUPS[groupId]) return c.json({ error: "未知录入组" }, 404);
     return c.json(repository.history(groupId));
   });
-  app.post("/api/ballots", async (c) => {
+  routes.post("/api/ballots", async (c) => {
     const parsed = ballotSubmissionSchema.safeParse(
       await c.req.json().catch(() => undefined),
     );
@@ -94,7 +114,7 @@ export function createApp(
     notify();
     return c.json(record, 201);
   });
-  app.post("/api/ballots/:id/withdraw", async (c) => {
+  routes.post("/api/ballots/:id/withdraw", async (c) => {
     const parsed = withdrawalSchema.safeParse(
       await c.req.json().catch(() => undefined),
     );
@@ -105,7 +125,7 @@ export function createApp(
     notify();
     return c.json({ ok: true });
   });
-  app.post("/api/admin/reset", async (c) => {
+  routes.post("/api/admin/reset", async (c) => {
     if (!options.adminPasswordHash)
       return c.json(
         { error: "管理员口令尚未配置", code: "ADMIN_NOT_CONFIGURED" },
@@ -123,7 +143,7 @@ export function createApp(
     notify();
     return c.json({ ok: true, ...repository.syncState() });
   });
-  app.get("/api/events", (c) =>
+  routes.get("/api/events", (c) =>
     streamSSE(c, async (stream) => {
       let pending: ((state: SyncState) => void) | undefined;
       const listener: VersionListener = (state) => pending?.(state);

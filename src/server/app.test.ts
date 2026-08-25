@@ -7,6 +7,31 @@ let repository: TallyRepository | undefined;
 afterEach(() => repository?.close());
 
 describe("tally HTTP interface", () => {
+  it("mounts API routes below the configured base path", async () => {
+    repository = createTallyRepository(":memory:");
+    const app = createApp(repository, { basePath: "/gdh-vote/" });
+
+    expect((await app.request("/api/results/union")).status).toBe(404);
+    expect((await app.request("/gdh-vote/api/results/union")).status).toBe(200);
+  });
+
+  it("protects every API route with HTTP Basic Auth when configured", async () => {
+    repository = createTallyRepository(":memory:");
+    const app = createApp(repository, {
+      accessCredentials: { username: "shrq", password: "test-password" },
+    });
+
+    const unauthorized = await app.request("/api/results/union");
+    expect(unauthorized.status).toBe(401);
+    expect(unauthorized.headers.get("www-authenticate")).toContain("Basic");
+
+    const authorization = `Basic ${Buffer.from("shrq:test-password").toString("base64")}`;
+    const authorized = await app.request("/api/results/union", {
+      headers: { authorization },
+    });
+    expect(authorized.status).toBe(200);
+  });
+
   it("submits a ballot and returns authoritative results", async () => {
     repository = createTallyRepository(":memory:");
     const app = createApp(repository);

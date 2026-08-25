@@ -117,6 +117,8 @@ export function validateDraft(draft: BallotDraft): DraftValidation {
   const normalizedWriteIns = draft.writeIns
     .map((name) => name.trim())
     .filter(Boolean);
+  if (draft.writeIns.some((name) => !name.trim()))
+    errors.push("请填写另选人姓名或移除空白项");
   const choiceValues = election.candidates.map((name) => draft.choices[name]);
   if (
     choiceValues.some(
@@ -134,7 +136,7 @@ export function validateDraft(draft: BallotDraft): DraftValidation {
   const listedApprovals = choiceValues.filter(
     (choice) => choice === "approval",
   ).length;
-  if (normalizedWriteIns.length > oppositions)
+  if (draft.writeIns.length > oppositions)
     errors.push(`另选人数不能超过反对数（当前最多 ${oppositions} 人）`);
   const duplicate = normalizedWriteIns.find(
     (name, index) => normalizedWriteIns.indexOf(name) !== index,
@@ -153,7 +155,7 @@ export function validateDraft(draft: BallotDraft): DraftValidation {
     approvals,
     oppositions,
     abstentions,
-    availableWriteIns: Math.max(0, oppositions - normalizedWriteIns.length),
+    availableWriteIns: Math.max(0, oppositions - draft.writeIns.length),
     normalizedWriteIns,
     errors,
   };

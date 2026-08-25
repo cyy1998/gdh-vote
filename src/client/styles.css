@@ -119,6 +119,40 @@ header .link {
   color: #727775;
   font-size: 13px;
 }
+.reset-draft {
+  padding: 8px 14px;
+  color: #4f5f5a;
+  background: white;
+  border: 1px solid #a9b3af;
+  border-radius: 3px;
+  font-weight: 700;
+}
+.reset-draft:hover {
+  color: #173f37;
+  background: #f1f6f4;
+  border-color: #78988f;
+}
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #727775;
+  font-size: 13px;
+}
+.history-controls label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+}
+.history-controls select {
+  min-width: 112px;
+  padding: 7px 28px 7px 9px;
+  color: #33403c;
+  background: white;
+  border: 1px solid #c9c4ba;
+  border-radius: 3px;
+}
 .record-layout {
   display: grid;
   grid-template-columns: minmax(700px, 1fr) 315px;
@@ -559,11 +593,113 @@ header .link {
   background: #eee;
 }
 .record-detail {
-  padding: 12px 22px;
+  padding: 18px 22px 22px;
   color: #555c58;
   background: #faf9f6;
   font-size: 13px;
-  line-height: 1.8;
+  border-bottom: 1px solid #d8d2c7;
+}
+.ballot-sheet-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+.ballot-sheet-heading h3 {
+  margin: 3px 0 0;
+  color: #242927;
+  font-family: SimSun, serif;
+  font-size: 18px;
+}
+.ballot-sheet-legend {
+  display: flex;
+  gap: 12px;
+  color: #555b58;
+  font-size: 12px;
+  font-weight: 800;
+}
+.ballot-grid-scroller {
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+.ballot-sheet-grid {
+  width: max-content;
+  display: grid;
+  border: 2px solid #252927;
+  background: white;
+}
+.ballot-sheet-labels,
+.ballot-sheet-candidate {
+  display: grid;
+  grid-template-rows: 42px 116px;
+  min-width: 0;
+  border-right: 1px solid #252927;
+}
+.ballot-sheet-candidate:last-child {
+  border-right: 0;
+}
+.ballot-sheet-labels > *,
+.ballot-sheet-candidate > * {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+}
+.ballot-sheet-labels > span,
+.ballot-sheet-candidate > span {
+  border-bottom: 1px solid #252927;
+}
+.ballot-sheet-labels > strong,
+.ballot-sheet-name {
+  padding: 7px 0;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.ballot-sheet-labels {
+  color: #222725;
+  font-family: SimSun, serif;
+  font-size: 14px;
+}
+.ballot-sheet-symbol {
+  color: #1f2522;
+  font-family: SimSun, serif;
+  font-size: 25px;
+  font-weight: 900;
+}
+.ballot-sheet-name {
+  color: #222725;
+  font-family: SimSun, serif;
+  font-size: 16px;
+  line-height: 1;
+}
+.ballot-sheet-candidate.opposition .ballot-sheet-symbol {
+  color: #9c422f;
+  background: #fff0eb;
+}
+.ballot-sheet-candidate.abstention .ballot-sheet-symbol {
+  color: #777d79;
+  background: #f0efec;
+}
+.write-in-sheet {
+  margin-top: 16px;
+}
+.write-in-sheet > strong {
+  display: block;
+  margin-bottom: 7px;
+  color: #343a37;
+}
+.write-in-sheet .ballot-sheet-labels,
+.write-in-sheet .ballot-sheet-candidate {
+  grid-template-rows: 38px 116px;
+}
+.no-write-ins {
+  display: block;
+  padding: 13px 16px;
+  color: #777c79;
+  background: white;
+  border: 1px dashed #c8c3b9;
 }
 .danger-text {
   color: #a33f31;
@@ -671,6 +807,9 @@ header .link {
   .table-row > span:last-child {
     grid-column: 2 / 4;
   }
+  .ballot-sheet {
+    padding: 16px 12px 18px;
+  }
   .result-row {
     grid-template-columns: 55px 1fr 65px 70px 70px;
     padding: 0 8px;
@@ -700,6 +839,14 @@ header .link {
     white-space: nowrap;
   }
   .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .history-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .ballot-sheet-heading {
     align-items: flex-start;
     flex-direction: column;
   }

@@ -37,6 +37,20 @@ describe("ballot recording rules", () => {
     expect(validateDraft(draft)).toMatchObject({ canSubmit: false });
   });
 
+  it("counts an empty write-in input as an occupied slot and requires a name", () => {
+    const draft = createDefaultDraft("union");
+    draft.choices["王凯"] = "opposition";
+    draft.writeIns = [""];
+
+    expect(validateDraft(draft)).toMatchObject({
+      canSubmit: false,
+      availableWriteIns: 0,
+    });
+    expect(validateDraft(draft).errors).toContain(
+      "请填写另选人姓名或移除空白项",
+    );
+  });
+
   it("rejects duplicate and listed-candidate write-in names after trimming", () => {
     const draft = createDefaultDraft("union");
     draft.choices["王凯"] = "opposition";

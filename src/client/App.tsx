@@ -12,6 +12,7 @@ import {
 import { api, type BallotRecord, type TallyResult } from "./api.js";
 
 type Page = "entrance" | "record" | "history" | "results" | "admin";
+type HistorySortOrder = "asc" | "desc";
 const groupOrder: RecordingGroupId[] = [
   "union-1",
   "union-2",
@@ -35,7 +36,7 @@ export function App() {
   });
 
   useEffect(() => {
-    const events = new EventSource("/api/events");
+    const events = new EventSource(api.eventsUrl);
     events.addEventListener("version", (event) => {
       const state = JSON.parse((event as MessageEvent).data) as {
         generations: Record<ElectionId, number>;
@@ -154,7 +155,7 @@ function Entrance({
         <br />
         计票助手
       </h1>
-      <p>请选择本设备的录入组别。组别将固定可录入的选举类型。</p>
+      <p>请选择本设备的录入组别。</p>
       <div className="group-section">
         <h2>工会委员会委员选举</h2>
         <div className="group-grid">
@@ -228,7 +229,7 @@ function Recorder({
   }, [draft, electionId, generation]);
   useEffect(() => {
     if (submissionNotice === null) return;
-    const timeout = window.setTimeout(() => setSubmissionNotice(null), 1000);
+    const timeout = window.setTimeout(() => setSubmissionNotice(null), 1500);
     return () => window.clearTimeout(timeout);
   }, [submissionNotice]);
   const setChoice = (name: string, choice: Choice) =>
@@ -236,6 +237,15 @@ function Recorder({
       ...current,
       choices: { ...current.choices, [name]: choice },
     }));
+  const resetDraft = () => {
+    const empty = createDefaultDraft(electionId);
+    setDraft(empty);
+    setErrorMessage("");
+    localStorage.setItem(
+      `draft:${electionId}`,
+      JSON.stringify({ generation, draft: empty }),
+    );
+  };
   const performSubmission = async (next: BallotDraft) => {
     try {
       const record = await api.submit(groupId, next);
@@ -340,7 +350,9 @@ function Recorder({
           <span className="eyebrow">当前录入</span>
           <h2>{election.name}</h2>
         </div>
-        <span>所有候选人默认“赞成”，只需修改纸票上的反对与弃权项。</span>
+        <button type="button" className="reset-draft" onClick={resetDraft}>
+          重置本票
+        </button>
       </div>
       <div className="record-layout">
         <section className="candidate-panel">
@@ -448,10 +460,14 @@ function Recorder({
               className="secondary"
               disabled={validation.availableWriteIns <= 0}
               onClick={() =>
-                setDraft((current) => ({
-                  ...current,
-                  writeIns: [...current.writeIns, ""],
-                }))
+                setDraft((current) =>
+                  validateDraft(current).availableWriteIns <= 0
+                    ? current
+                    : {
+                        ...current,
+                        writeIns: [...current.writeIns, ""],
+                      },
+                )
               }
             >
               ＋ 添加另选人
@@ -489,6 +505,7 @@ function History({
 }) {
   const [records, setRecords] = useState<BallotRecord[]>([]);
   const [expanded, setExpanded] = useState<number>();
+  const [sortOrder, setSortOrder] = useState<HistorySortOrder>("desc");
   const [error, setError] = useState("");
   const load = () =>
     api
@@ -498,6 +515,16 @@ function History({
   useEffect(() => {
     void load();
   }, [groupId, refresh]);
+  const sortedRecords = useMemo(
+    () =>
+      [...records].sort((first, second) => {
+        const comparison =
+          first.submittedAt.localeCompare(second.submittedAt) ||
+          first.sequence - second.sequence;
+        return sortOrder === "asc" ? comparison : -comparison;
+      }),
+    [records, sortOrder],
+  );
   const withdraw = async (record: BallotRecord) => {
     if (
       !confirm(`确认撤销第 ${record.sequence} 号记录？原记录会保留在历史中。`)
@@ -517,24 +544,40 @@ function History({
           <span className="eyebrow">{RECORDING_GROUPS[groupId].name}</span>
           <h2>录入历史</h2>
         </div>
-        <span>共 {records.length} 条历史记录</span>
+        <div className="history-controls">
+          <span>共 {records.length} 条历史记录</span>
+          <label>
+            提交时间
+            <select
+              aria-label="提交时间排序"
+              value={sortOrder}
+              onChange={(event) =>
+                setSortOrder(event.target.value as HistorySortOrder)
+              }
+            >
+              <option value="desc">最新在前</option>
+              <option value="asc">最早在前</option>
+            </select>
+          </label>
+        </div>
       </div>
       {error && <div className="error">{error}</div>}
-      <div className="table">
-        <div className="table-row table-head">
-          <span>序号</span>
-          <span>提交时间</span>
-          <span>状态</span>
-          <span>操作</span>
+      <div className="table" role="table" aria-label="录入历史">
+        <div className="table-row table-head" role="row">
+          <span role="columnheader">序号</span>
+          <span role="columnheader">提交时间</span>
+          <span role="columnheader">状态</span>
+          <span role="columnheader">操作</span>
         </div>
-        {records.map((record) => (
+        {sortedRecords.map((record) => (
           <div key={record.id}>
-            <div className="table-row">
-              <strong>第 {record.sequence} 号</strong>
-              <span>
+            <div className="table-row" role="row">
+              <strong role="cell">第 {record.sequence} 号</strong>
+              <span role="cell">
                 {new Date(record.submittedAt).toLocaleString("zh-CN")}
               </span>
               <span
+                role="cell"
                 className={`badge ${record.status === "withdrawn" ? "muted" : record.valid ? "good" : "bad"}`}
               >
                 {record.status === "withdrawn"
@@ -543,7 +586,7 @@ function History({
                     ? "有效"
                     : "无效"}
               </span>
-              <span>
+              <span role="cell">
                 <button
                   className="link"
                   onClick={() =>
@@ -562,21 +605,107 @@ function History({
                 )}
               </span>
             </div>
-            {expanded === record.id && (
-              <div className="record-detail">
-                <p>
-                  {Object.entries(record.choices)
-                    .map(
-                      ([name, choice]) =>
-                        `${name}：${choice === "approval" ? "赞成" : choice === "opposition" ? "反对" : "弃权"}`,
-                    )
-                    .join("　")}
-                </p>
-                <p>另选人：{record.writeIns.join("、") || "无"}</p>
-              </div>
-            )}
+            {expanded === record.id && <BallotSheet record={record} />}
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+const choicePresentation: Record<Choice, { label: string; symbol: string }> = {
+  approval: { label: "赞成", symbol: "○" },
+  opposition: { label: "反对", symbol: "×" },
+  abstention: { label: "弃权", symbol: "—" },
+};
+
+function BallotChoiceGrid({
+  label,
+  candidates,
+  choices,
+}: {
+  label: string;
+  candidates: readonly string[];
+  choices: Record<string, Choice>;
+}) {
+  return (
+    <div className="ballot-grid-scroller">
+      <div
+        className="ballot-sheet-grid"
+        role="list"
+        aria-label={label}
+        style={{
+          gridTemplateColumns: `56px repeat(${candidates.length}, 48px)`,
+        }}
+      >
+        <div className="ballot-sheet-labels" aria-hidden="true">
+          <span>符号</span>
+          <strong>候选人姓名</strong>
+        </div>
+        {candidates.map((name) => {
+          const choice = choices[name];
+          const presentation = choicePresentation[choice];
+          return (
+            <div
+              className={`ballot-sheet-candidate ${choice}`}
+              role="listitem"
+              aria-label={`${name}：${presentation.label}`}
+              key={name}
+            >
+              <span className="ballot-sheet-symbol" aria-hidden="true">
+                {presentation.symbol}
+              </span>
+              <strong className="ballot-sheet-name" aria-hidden="true">
+                {name}
+              </strong>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BallotSheet({ record }: { record: BallotRecord }) {
+  const election = ELECTIONS[record.electionId];
+  const writeInChoices = Object.fromEntries(
+    record.writeIns.map((name) => [name, "approval" as const]),
+  );
+  return (
+    <section
+      className="record-detail ballot-sheet"
+      role="region"
+      aria-label={`第 ${record.sequence} 号选票票面`}
+    >
+      <div className="ballot-sheet-heading">
+        <div>
+          <span className="eyebrow">选票票面</span>
+          <h3>
+            第 {record.sequence} 号 · {election.shortName}
+          </h3>
+        </div>
+        <div className="ballot-sheet-legend" aria-label="票面符号说明">
+          <span>○ 赞成</span>
+          <span>× 反对</span>
+          <span>— 弃权</span>
+        </div>
+      </div>
+      <BallotChoiceGrid
+        label="正式候选人票面"
+        candidates={election.candidates}
+        choices={record.choices}
+      />
+      <div className="write-in-sheet">
+        <strong>另选人</strong>
+        {record.writeIns.length > 0 ? (
+          <BallotChoiceGrid
+            label="另选人票面"
+            candidates={record.writeIns}
+            choices={writeInChoices}
+          />
+        ) : (
+          <span className="no-write-ins">无另选人</span>
+        )}
       </div>
     </section>
   );
@@ -603,7 +732,6 @@ function Results({
     <section>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">所有设备实时可见</span>
           <h2>实时结果</h2>
         </div>
         <div className="tabs">
@@ -659,7 +787,6 @@ function Results({
               </div>
             ))}
           </div>
-          <p className="note">排名仅为计票结果，不代表系统自动宣布当选人。</p>
         </>
       )}
     </section>
@@ -668,53 +795,129 @@ function Results({
 
 function Admin() {
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
-  const reset = async (ids: ElectionId[], label: string) => {
-    if (!password) return setMessage("请先输入管理员口令");
-    if (
-      !confirm(
-        `确认${label}？此操作将永久删除记录、序号从 1 重新开始，且无法恢复。`,
-      )
-    )
+  const [pendingReset, setPendingReset] = useState<{
+    ids: ElectionId[];
+    label: string;
+  } | null>(null);
+  const [notice, setNotice] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+  useEffect(() => {
+    if (notice === null) return;
+    const timeout = window.setTimeout(() => setNotice(null), 1500);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
+  const requestReset = (ids: ElectionId[], label: string) => {
+    if (!password) {
+      setNotice({ kind: "error", text: "请先输入管理员口令" });
       return;
+    }
+    setPendingReset({ ids, label });
+  };
+  const reset = async (ids: ElectionId[], label: string) => {
     try {
       await api.reset(password, ids);
-      setMessage(`${label}完成`);
+      setPassword("");
+      setNotice({ kind: "success", text: `${label}成功` });
     } catch (e) {
-      setMessage((e as Error).message);
+      setNotice({ kind: "error", text: (e as Error).message });
     }
   };
   return (
-    <section className="admin">
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">仅限管理员</span>
-          <h2>计票清空</h2>
+    <>
+      {notice !== null && (
+        <div
+          className={`submit-toast ${notice.kind === "error" ? "invalid" : ""}`}
+          role="status"
+          aria-live="assertive"
+        >
+          <span className="submit-toast-icon" aria-hidden="true">
+            {notice.kind === "success" ? "✓" : "!"}
+          </span>
+          <strong className="submit-toast-copy">{notice.text}</strong>
+          <button
+            type="button"
+            aria-label="关闭操作提示"
+            onClick={() => setNotice(null)}
+          >
+            ×
+          </button>
         </div>
-      </div>
-      <label>
-        管理员口令
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-      </label>
-      <div className="warning">
-        清空会永久删除目标选举的全部记录并重置序号，不提供备份与恢复。
-      </div>
-      <div className="danger-actions">
-        <button onClick={() => reset(["union"], "清空工会委员会选举")}>
-          清空工会委员会选举
-        </button>
-        <button onClick={() => reset(["expense"], "清空经费审查委员会选举")}>
-          清空经费审查委员会选举
-        </button>
-        <button onClick={() => reset(["union", "expense"], "同时清空两项选举")}>
-          同时清空两项选举
-        </button>
-      </div>
-      {message && <div className="message">{message}</div>}
-    </section>
+      )}
+      {pendingReset !== null && (
+        <div className="confirm-overlay">
+          <section
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-reset-confirm-title"
+          >
+            <span className="confirm-dialog-mark" aria-hidden="true">
+              !
+            </span>
+            <h3 id="admin-reset-confirm-title">确认{pendingReset.label}？</h3>
+            <p>此操作将永久删除全部相关记录，序号从 1 重新开始，且无法恢复。</p>
+            <div className="confirm-dialog-actions">
+              <button
+                type="button"
+                className="confirm-cancel"
+                autoFocus
+                onClick={() => setPendingReset(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="confirm-danger"
+                onClick={() => {
+                  const { ids, label } = pendingReset;
+                  setPendingReset(null);
+                  void reset(ids, label);
+                }}
+              >
+                确认清空
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      <section className="admin">
+        <div className="page-heading">
+          <div>
+            <span className="eyebrow">仅限管理员</span>
+            <h2>计票清空</h2>
+          </div>
+        </div>
+        <label>
+          管理员口令
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+        <div className="warning">
+          清空会永久删除目标选举的全部记录并重置序号，不提供备份与恢复。
+        </div>
+        <div className="danger-actions">
+          <button onClick={() => requestReset(["union"], "清空工会委员会选举")}>
+            清空工会委员会选举
+          </button>
+          <button
+            onClick={() => requestReset(["expense"], "清空经费审查委员会选举")}
+          >
+            清空经费审查委员会选举
+          </button>
+          <button
+            onClick={() =>
+              requestReset(["union", "expense"], "同时清空两项选举")
+            }
+          >
+            同时清空两项选举
+          </button>
+        </div>
+      </section>
+    </>
   );
 }

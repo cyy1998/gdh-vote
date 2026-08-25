@@ -28,6 +28,8 @@ export interface TallyResult {
   candidates: RankedCandidate[];
 }
 
+const API_BASE = `${import.meta.env.BASE_URL}api`;
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -39,22 +41,23 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  eventsUrl: `${API_BASE}/events`,
   result: (electionId: ElectionId) =>
-    request<TallyResult>(`/api/results/${electionId}`),
+    request<TallyResult>(`${API_BASE}/results/${electionId}`),
   history: (groupId: RecordingGroupId) =>
-    request<BallotRecord[]>(`/api/history/${groupId}`),
+    request<BallotRecord[]>(`${API_BASE}/history/${groupId}`),
   submit: (groupId: RecordingGroupId, draft: BallotDraft) =>
-    request<BallotRecord>("/api/ballots", {
+    request<BallotRecord>(`${API_BASE}/ballots`, {
       method: "POST",
       body: JSON.stringify({ groupId, draft }),
     }),
   withdraw: (groupId: RecordingGroupId, id: number) =>
-    request<{ ok: true }>(`/api/ballots/${id}/withdraw`, {
+    request<{ ok: true }>(`${API_BASE}/ballots/${id}/withdraw`, {
       method: "POST",
       body: JSON.stringify({ groupId }),
     }),
   reset: (password: string, electionIds: ElectionId[]) =>
-    request<{ ok: true }>("/api/admin/reset", {
+    request<{ ok: true }>(`${API_BASE}/admin/reset`, {
       method: "POST",
       body: JSON.stringify({ password, electionIds }),
     }),
