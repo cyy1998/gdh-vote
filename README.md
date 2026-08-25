@@ -47,27 +47,26 @@ HTTP Basic Auth 本身不加密口令，只应在受信任的局域网内使用�
 
 ## Docker 部署
 
-构建镜像时传入页面子路径；该值会同时用于前端资源和服务端路由：
+Docker Compose 会自动读取项目根目录的 `.env`。完成访问口令、子路径和可选代理配置后，构建并启动：
 
 ```powershell
-docker build --build-arg TALLY_BASE_PATH=/gdh-vote/ -t gdh-vote .
+docker compose up -d --build
 ```
 
 Dockerfile 默认通过轩辕镜像拉取 `docker.xuanyuan.run/node:24-bookworm-slim`，Debian 软件包使用阿里云镜像，Corepack、pnpm、npm 软件包和 Node 原生模块头文件使用 npmmirror。如需替换，可通过 `NODE_IMAGE`、`DEBIAN_MIRROR`、`NPM_REGISTRY` 和 `NODE_DIST_URL` 构建参数覆盖。
 
-使用 `.env` 传入访问口令和管理员口令，并用命名卷持久化 SQLite 数据：
+如果 Docker 构建和容器运行需要代理，在 `.env` 中配置：
 
-```powershell
-docker run -d `
-  --name gdh-vote `
-  --restart unless-stopped `
-  -p 3000:3000 `
-  --env-file .env `
-  -v gdh-vote-data:/app/data `
-  gdh-vote
+```dotenv
+HTTP_PROXY=http://host.docker.internal:7890
+HTTPS_PROXY=http://host.docker.internal:7890
+ALL_PROXY=
+NO_PROXY=localhost,127.0.0.1
 ```
 
-容器以非 root 用户运行，监听 `3000` 端口，数据库保存在 `/app/data`。`ACCESS_PASSWORD` 必须通过运行时环境传入；不要用 Docker 构建参数传递口令。使用子路径时，构建参数 `TALLY_BASE_PATH` 和运行时 `.env` 中的同名值必须保持一致。
+代理运行在宿主机时应使用 `host.docker.internal`，容器中的 `127.0.0.1` 指向容器自身。Compose 会把代理传给构建阶段和运行容器，代理值不会固化进镜像层。留空即可禁用代理。
+
+容器以非 root 用户运行，监听容器内的 `3000` 端口，数据库保存在命名卷 `gdh-vote-data`。`ACCESS_PASSWORD` 必须通过运行时环境传入，不要用 Docker 构建参数传递口令。
 
 ### 部署到子路径
 

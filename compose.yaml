@@ -1,0 +1,42 @@
+services:
+  gdh-vote:
+    image: gdh-vote:latest
+    build:
+      context: .
+      args:
+        TALLY_BASE_PATH: ${TALLY_BASE_PATH:-/}
+        NODE_IMAGE: ${NODE_IMAGE:-docker.xuanyuan.run/node:24-bookworm-slim}
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-http://mirrors.aliyun.com}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+        NODE_DIST_URL: ${NODE_DIST_URL:-https://npmmirror.com/mirrors/node}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        ALL_PROXY: ${ALL_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+      extra_hosts:
+        - "host.docker.internal=host-gateway"
+    container_name: gdh-vote
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      PORT: 3000
+      DATA_DIR: /app/data
+      TALLY_BASE_PATH: ${TALLY_BASE_PATH:-/}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      ALL_PROXY: ${ALL_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+      http_proxy: ${HTTP_PROXY:-}
+      https_proxy: ${HTTPS_PROXY:-}
+      all_proxy: ${ALL_PROXY:-}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - gdh-vote-data:/app/data
+
+volumes:
+  gdh-vote-data:
