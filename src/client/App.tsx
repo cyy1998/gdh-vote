@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ELECTIONS,
   RECORDING_GROUPS,
@@ -30,23 +30,41 @@ export function App() {
   );
   const [connected, setConnected] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const versions = useRef<Record<ElectionId, number> | undefined>(undefined);
   const [generations, setGenerations] = useState<Record<ElectionId, number>>({
     union: 0,
     expense: 0,
   });
 
   useEffect(() => {
-    const events = new EventSource(api.eventsUrl);
-    events.addEventListener("version", (event) => {
-      const state = JSON.parse((event as MessageEvent).data) as {
-        generations: Record<ElectionId, number>;
-      };
-      setGenerations(state.generations);
-      setConnected(true);
-      setRefresh((value) => value + 1);
-    });
-    events.onerror = () => setConnected(false);
-    return () => events.close();
+    let active = true;
+    let timeout: number | undefined;
+    const poll = async () => {
+      try {
+        const state = await api.syncState();
+        if (!active) return;
+        const previous = versions.current;
+        versions.current = state.versions;
+        setGenerations(state.generations);
+        setConnected(true);
+        if (
+          previous === undefined ||
+          previous.union !== state.versions.union ||
+          previous.expense !== state.versions.expense
+        ) {
+          setRefresh((value) => value + 1);
+        }
+      } catch {
+        if (active) setConnected(false);
+      } finally {
+        if (active) timeout = window.setTimeout(() => void poll(), 2_000);
+      }
+    };
+    void poll();
+    return () => {
+      active = false;
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
   }, []);
 
   const selectGroup = (id: RecordingGroupId) => {

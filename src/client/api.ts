@@ -28,6 +28,11 @@ export interface TallyResult {
   candidates: RankedCandidate[];
 }
 
+export interface SyncState {
+  versions: Record<ElectionId, number>;
+  generations: Record<ElectionId, number>;
+}
+
 const API_BASE = `${import.meta.env.BASE_URL}api`;
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -41,7 +46,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  eventsUrl: `${API_BASE}/events`,
+  syncState: () => request<SyncState>(`${API_BASE}/config`),
   result: (electionId: ElectionId) =>
     request<TallyResult>(`${API_BASE}/results/${electionId}`),
   history: (groupId: RecordingGroupId) =>

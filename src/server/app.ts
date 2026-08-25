@@ -2,7 +2,6 @@ import { scryptSync, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { basicAuth } from "hono/basic-auth";
 import { HTTPException } from "hono/http-exception";
-import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import {
   ELECTIONS,
@@ -12,9 +11,6 @@ import {
 } from "../shared/domain.js";
 import { normalizeBasePath } from "./base-path.js";
 import { TallyError, type TallyRepository } from "./repository.js";
-
-type SyncState = ReturnType<TallyRepository["syncState"]>;
-type VersionListener = (state: SyncState) => void;
 
 const electionIdSchema = z.enum(["union", "expense"]);
 const groupIdSchema = z.enum(["union-1", "union-2", "union-3", "expense"]);
@@ -66,11 +62,6 @@ export function createApp(
   }
   const basePath = normalizeBasePath(options.basePath);
   const routes = basePath ? app.basePath(basePath) : app;
-  const listeners = new Set<VersionListener>();
-  const notify = () => {
-    const state = repository.syncState();
-    listeners.forEach((listener) => listener(state));
-  };
 
   app.onError((error, c) => {
     if (error instanceof HTTPException) return error.getResponse();
@@ -111,7 +102,6 @@ export function createApp(
       return c.json({ error: "选票数据格式无效", code: "BAD_REQUEST" }, 400);
     const body = parsed.data;
     const record = repository.submit(body.groupId, body.draft);
-    notify();
     return c.json(record, 201);
   });
   routes.post("/api/ballots/:id/withdraw", async (c) => {
@@ -122,7 +112,6 @@ export function createApp(
       return c.json({ error: "撤销请求格式无效", code: "BAD_REQUEST" }, 400);
     const { groupId } = parsed.data;
     repository.withdraw(groupId, Number(c.req.param("id")));
-    notify();
     return c.json({ ok: true });
   });
   routes.post("/api/admin/reset", async (c) => {
@@ -140,34 +129,8 @@ export function createApp(
     if (!verifyPassword(password, options.adminPasswordHash))
       return c.json({ error: "管理员口令错误", code: "UNAUTHORIZED" }, 401);
     repository.reset([...new Set(electionIds)]);
-    notify();
     return c.json({ ok: true, ...repository.syncState() });
   });
-  routes.get("/api/events", (c) =>
-    streamSSE(c, async (stream) => {
-      let pending: ((state: SyncState) => void) | undefined;
-      const listener: VersionListener = (state) => pending?.(state);
-      listeners.add(listener);
-      try {
-        await stream.writeSSE({
-          event: "version",
-          data: JSON.stringify(repository.syncState()),
-        });
-        while (true) {
-          const state = await new Promise<SyncState>((resolve) => {
-            pending = resolve;
-            setTimeout(() => resolve(repository.syncState()), 20_000);
-          });
-          await stream.writeSSE({
-            event: "version",
-            data: JSON.stringify(state),
-          });
-        }
-      } finally {
-        listeners.delete(listener);
-      }
-    }),
-  );
 
   return app;
 }

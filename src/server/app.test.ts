@@ -53,6 +53,19 @@ describe("tally HTTP interface", () => {
       activeBallots: 1,
       validBallots: 1,
     });
+
+    const syncState = await app.request("/api/config");
+    expect(await syncState.json()).toMatchObject({
+      versions: { union: 2, expense: 1 },
+      generations: { union: 1, expense: 1 },
+    });
+  });
+
+  it("does not expose the removed server-sent events endpoint", async () => {
+    repository = createTallyRepository(":memory:");
+    const app = createApp(repository);
+
+    expect((await app.request("/api/events")).status).toBe(404);
   });
 
   it("rejects malformed ballot input as a client error", async () => {

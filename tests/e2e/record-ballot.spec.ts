@@ -22,7 +22,7 @@ async function submitValidUnionBallot(page: Page, writeIn?: string) {
 test("recording group submits a valid union ballot and sees its sequence", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
   await expect(
     page.getByRole("heading", { name: /第二届“两委”委员选举/ }),
   ).toBeVisible();
@@ -40,10 +40,26 @@ test("recording group submits a valid union ballot and sees its sequence", async
   await expect(page.getByRole("status")).toContainText(/第 \d+ 号选票录入成功/);
 });
 
+test("client reports connectivity through polling without opening an event stream", async ({
+  page,
+}) => {
+  const apiRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/")) apiRequests.push(request.url());
+  });
+
+  await page.goto("./");
+  await page.getByRole("button", { name: /工会第一组/ }).click();
+  await expect(page.getByText("服务器已连接")).toBeVisible({ timeout: 5_000 });
+
+  expect(apiRequests.some((url) => url.endsWith("/api/config"))).toBe(true);
+  expect(apiRequests.some((url) => url.endsWith("/api/events"))).toBe(false);
+});
+
 test("manual invalid ballot uses one custom confirmation and a visible result", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("button", { name: /经审组/ }).click();
   await page.getByRole("button", { name: "记为无效票" }).click();
 
@@ -63,7 +79,7 @@ test("manual invalid ballot uses one custom confirmation and a visible result", 
 test("an empty write-in input still consumes its available slot", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("button", { name: /工会第一组/ }).click();
   await page
     .locator(".candidate-row")
@@ -81,7 +97,7 @@ test("an empty write-in input still consumes its available slot", async ({
 test("resetting a ballot restores every candidate to approval", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("button", { name: /工会第一组/ }).click();
 
   const rows = page.locator(".candidate-row");
@@ -101,7 +117,7 @@ test("resetting a ballot restores every candidate to approval", async ({
 test("administrator sees prominent password failure and reset success feedback", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("button", { name: /工会第一组/ }).click();
   await page.getByRole("button", { name: "管理" }).click();
 
@@ -125,7 +141,7 @@ test("administrator sees prominent password failure and reset success feedback",
 test("history can sort by submission time and shows a paper-like ballot grid", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("button", { name: /工会第三组/ }).click();
 
   const earlierSequence = await submitValidUnionBallot(page);
@@ -172,7 +188,7 @@ test("history can sort by submission time and shows a paper-like ballot grid", a
 test("withdrawing a ballot preserves its recorded choices in history", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("button", { name: /工会第二组/ }).click();
 
   const sequence = await submitValidUnionBallot(page);
