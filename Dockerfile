@@ -21,6 +21,7 @@ ENV http_proxy=$HTTP_PROXY
 ENV https_proxy=$HTTPS_PROXY
 ENV all_proxy=$ALL_PROXY
 ENV no_proxy=$NO_PROXY
+ENV NODE_USE_ENV_PROXY=1
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 ENV COREPACK_NPM_REGISTRY=$NPM_REGISTRY
@@ -30,6 +31,9 @@ RUN sed -i "s|https\?://deb.debian.org|$DEBIAN_MIRROR|g; s|https\?://security.de
     && rm -rf /var/lib/apt/lists/*
 ENV npm_config_registry=$NPM_REGISTRY
 ENV npm_config_disturl=$NODE_DIST_URL
+ENV npm_config_proxy=$HTTP_PROXY
+ENV npm_config_https_proxy=$HTTPS_PROXY
+ENV npm_config_noproxy=$NO_PROXY
 RUN corepack enable
 
 WORKDIR /app
@@ -46,6 +50,7 @@ FROM ${NODE_IMAGE} AS runtime
 
 ARG TALLY_BASE_PATH
 ENV NODE_ENV=production
+ENV NODE_USE_ENV_PROXY=1
 ENV PORT=3000
 ENV DATA_DIR=/app/data
 ENV ACCESS_USERNAME=shrq
