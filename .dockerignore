@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.local
+.env.*.local
+node_modules
+dist
+data
+artifacts
+test-results
+playwright-report
+*.db
+*.db-shm
+*.db-wal
+*.tsbuildinfo

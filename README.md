@@ -45,6 +45,30 @@ ACCESS_PASSWORD=设置一个仅供现场人员使用的访问口令
 
 HTTP Basic Auth 本身不加密口令，只应在受信任的局域网内使用；如果服务会经过不受信任的网络，请在前方配置 HTTPS 反向代理。
 
+## Docker 部署
+
+构建镜像时传入页面子路径；该值会同时用于前端资源和服务端路由：
+
+```powershell
+docker build --build-arg TALLY_BASE_PATH=/gdh-vote/ -t gdh-vote .
+```
+
+Dockerfile 默认通过轩辕镜像拉取 `docker.xuanyuan.run/node:24-bookworm-slim`，Debian 软件包使用阿里云镜像，Corepack、pnpm、npm 软件包和 Node 原生模块头文件使用 npmmirror。如需替换，可通过 `NODE_IMAGE`、`DEBIAN_MIRROR`、`NPM_REGISTRY` 和 `NODE_DIST_URL` 构建参数覆盖。
+
+使用 `.env` 传入访问口令和管理员口令，并用命名卷持久化 SQLite 数据：
+
+```powershell
+docker run -d `
+  --name gdh-vote `
+  --restart unless-stopped `
+  -p 3000:3000 `
+  --env-file .env `
+  -v gdh-vote-data:/app/data `
+  gdh-vote
+```
+
+容器以非 root 用户运行，监听 `3000` 端口，数据库保存在 `/app/data`。`ACCESS_PASSWORD` 必须通过运行时环境传入；不要用 Docker 构建参数传递口令。使用子路径时，构建参数 `TALLY_BASE_PATH` 和运行时 `.env` 中的同名值必须保持一致。
+
 ### 部署到子路径
 
 如果站点通过 `/vote-tallying/` 等子路径访问，在构建前配置：

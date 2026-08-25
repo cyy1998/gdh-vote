@@ -29,6 +29,7 @@
     "pinyin-pro": "3.29.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "tsx": "4.23.12",
     "zod": "4.4.3"
   },
   "devDependencies": {
@@ -41,7 +42,6 @@
     "concurrently": "9.2.1",
     "drizzle-kit": "0.31.10",
     "prettier": "3.9.6",
-    "tsx": "4.23.12",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "4.1.11"
