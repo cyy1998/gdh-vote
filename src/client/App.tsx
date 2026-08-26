@@ -341,6 +341,35 @@ function Recorder({
     }
     void performSubmission(next);
   };
+  useEffect(() => {
+    const submitWithSpace = (event: KeyboardEvent) => {
+      if (
+        event.code !== "Space" ||
+        event.repeat ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        pendingSubmission !== null
+      )
+        return;
+
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      )
+        return;
+
+      event.preventDefault();
+      requestSubmission(false);
+    };
+
+    window.addEventListener("keydown", submitWithSpace);
+    return () => window.removeEventListener("keydown", submitWithSpace);
+  });
   return (
     <>
       {submissionNotice !== null && (
@@ -565,6 +594,7 @@ function Recorder({
             <button
               className="primary"
               disabled={!validation.canSubmit || atElectorLimit}
+              title="快捷键：空格"
               onClick={() => requestSubmission(false)}
             >
               提交本票
@@ -658,6 +688,8 @@ function History({
   const [expanded, setExpanded] = useState<number>();
   const [sortOrder, setSortOrder] = useState<HistorySortOrder>("desc");
   const [error, setError] = useState("");
+  const [pendingWithdrawal, setPendingWithdrawal] =
+    useState<BallotRecord | null>(null);
   const load = () =>
     api
       .history(groupId)
@@ -677,10 +709,7 @@ function History({
     [records, sortOrder],
   );
   const withdraw = async (record: BallotRecord) => {
-    if (
-      !confirm(`确认撤销第 ${record.sequence} 号记录？原记录会保留在历史中。`)
-    )
-      return;
+    setPendingWithdrawal(null);
     try {
       await api.withdraw(groupId, record.id);
       load();
@@ -689,78 +718,117 @@ function History({
     }
   };
   return (
-    <section>
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">{RECORDING_GROUPS[groupId].name}</span>
-          <h2>录入历史</h2>
-        </div>
-        <div className="history-controls">
-          <span>共 {records.length} 条历史记录</span>
-          <label>
-            提交时间
-            <select
-              aria-label="提交时间排序"
-              value={sortOrder}
-              onChange={(event) =>
-                setSortOrder(event.target.value as HistorySortOrder)
-              }
-            >
-              <option value="desc">最新在前</option>
-              <option value="asc">最早在前</option>
-            </select>
-          </label>
-        </div>
-      </div>
-      {error && <div className="error">{error}</div>}
-      <div className="table" role="table" aria-label="录入历史">
-        <div className="table-row table-head" role="row">
-          <span role="columnheader">序号</span>
-          <span role="columnheader">提交时间</span>
-          <span role="columnheader">状态</span>
-          <span role="columnheader">操作</span>
-        </div>
-        {sortedRecords.map((record) => (
-          <div key={record.id}>
-            <div className="table-row" role="row">
-              <strong role="cell">第 {record.sequence} 号</strong>
-              <span role="cell">
-                {new Date(record.submittedAt).toLocaleString("zh-CN")}
-              </span>
-              <span
-                role="cell"
-                className={`badge ${record.status === "withdrawn" ? "muted" : record.valid ? "good" : "bad"}`}
+    <>
+      {pendingWithdrawal !== null && (
+        <div className="confirm-overlay">
+          <section
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="withdraw-confirm-title"
+          >
+            <span className="confirm-dialog-mark" aria-hidden="true">
+              !
+            </span>
+            <h3 id="withdraw-confirm-title">
+              确认撤销第 {pendingWithdrawal.sequence} 号记录？
+            </h3>
+            <p>原记录将保留在录入历史中，并标记为已撤销。</p>
+            <div className="confirm-dialog-actions">
+              <button
+                type="button"
+                className="confirm-cancel"
+                autoFocus
+                onClick={() => setPendingWithdrawal(null)}
               >
-                {record.status === "withdrawn"
-                  ? "已撤销"
-                  : record.valid
-                    ? "有效"
-                    : "无效"}
-              </span>
-              <span role="cell">
-                <button
-                  className="link"
-                  onClick={() =>
-                    setExpanded(expanded === record.id ? undefined : record.id)
-                  }
-                >
-                  {expanded === record.id ? "收起" : "查看票面"}
-                </button>
-                {record.status === "active" && (
-                  <button
-                    className="link danger-text"
-                    onClick={() => withdraw(record)}
-                  >
-                    撤销
-                  </button>
-                )}
-              </span>
+                取消
+              </button>
+              <button
+                type="button"
+                className="confirm-danger"
+                onClick={() => void withdraw(pendingWithdrawal)}
+              >
+                确认撤销
+              </button>
             </div>
-            {expanded === record.id && <BallotSheet record={record} />}
+          </section>
+        </div>
+      )}
+      <section>
+        <div className="page-heading">
+          <div>
+            <span className="eyebrow">{RECORDING_GROUPS[groupId].name}</span>
+            <h2>录入历史</h2>
           </div>
-        ))}
-      </div>
-    </section>
+          <div className="history-controls">
+            <span>共 {records.length} 条历史记录</span>
+            <label>
+              提交时间
+              <select
+                aria-label="提交时间排序"
+                value={sortOrder}
+                onChange={(event) =>
+                  setSortOrder(event.target.value as HistorySortOrder)
+                }
+              >
+                <option value="desc">最新在前</option>
+                <option value="asc">最早在前</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        {error && <div className="error">{error}</div>}
+        <div className="table" role="table" aria-label="录入历史">
+          <div className="table-row table-head" role="row">
+            <span role="columnheader">序号</span>
+            <span role="columnheader">提交时间</span>
+            <span role="columnheader">状态</span>
+            <span role="columnheader">操作</span>
+          </div>
+          {sortedRecords.map((record) => (
+            <div key={record.id}>
+              <div className="table-row" role="row">
+                <strong role="cell">第 {record.sequence} 号</strong>
+                <span role="cell">
+                  {new Date(record.submittedAt).toLocaleString("zh-CN")}
+                </span>
+                <span
+                  role="cell"
+                  className={`badge ${record.status === "withdrawn" ? "muted" : record.valid ? "good" : "bad"}`}
+                >
+                  {record.status === "withdrawn"
+                    ? "已撤销"
+                    : record.valid
+                      ? "有效"
+                      : "无效"}
+                </span>
+                <span role="cell">
+                  <button
+                    className="link"
+                    onClick={() =>
+                      setExpanded(
+                        expanded === record.id ? undefined : record.id,
+                      )
+                    }
+                  >
+                    {expanded === record.id ? "收起" : "查看票面"}
+                  </button>
+                  {record.status === "active" && (
+                    <button
+                      className="link danger-text"
+                      onClick={() => setPendingWithdrawal(record)}
+                    >
+                      撤销
+                    </button>
+                  )}
+                </span>
+              </div>
+              {expanded === record.id && <BallotSheet record={record} />}
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }
 

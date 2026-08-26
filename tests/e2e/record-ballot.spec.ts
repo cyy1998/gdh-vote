@@ -50,6 +50,42 @@ test("recording group submits a valid union ballot and sees its sequence", async
   );
 });
 
+test("space submits a valid ballot through the regular submission path", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.getByRole("button", { name: /工会第一组/ }).click();
+
+  const rows = page.locator(".candidate-row");
+  for (let index = 0; index < 3; index += 1)
+    await rows.nth(index).getByRole("button", { name: "反对" }).click();
+
+  await page.keyboard.press("Space");
+
+  await expect(page.getByRole("status")).toContainText(/第 \d+ 号选票录入成功/);
+});
+
+test("space still asks for confirmation before submitting an invalid ballot", async ({
+  page,
+}) => {
+  let submissionCount = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/api/ballots"))
+      submissionCount += 1;
+  });
+
+  await page.goto("./");
+  await page.getByRole("button", { name: /经审组/ }).click();
+  await expect(page.getByText("当前为超额无效票")).toBeVisible();
+
+  await page.keyboard.press("Space");
+
+  await expect(
+    page.getByRole("dialog", { name: "确认提交超额无效票？" }),
+  ).toBeVisible();
+  expect(submissionCount).toBe(0);
+});
+
 test("another recording group updates only the election-wide progress", async ({
   page,
 }) => {
@@ -368,8 +404,20 @@ test("withdrawing a ballot preserves its recorded choices in history", async ({
     .getByRole("row")
     .filter({ hasText: `第 ${sequence} 号` });
 
-  page.once("dialog", (dialog) => dialog.accept());
+  let nativeDialogCount = 0;
+  page.on("dialog", (dialog) => {
+    nativeDialogCount += 1;
+    void dialog.dismiss();
+  });
   await recordRow.getByRole("button", { name: "撤销" }).click();
+  const confirmation = page.getByRole("dialog", {
+    name: `确认撤销第 ${sequence} 号记录？`,
+  });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText("原记录将保留在录入历史中");
+  expect(nativeDialogCount).toBe(0);
+  await confirmation.getByRole("button", { name: "确认撤销" }).click();
+
   await expect(recordRow).toContainText("已撤销");
   await recordRow.getByRole("button", { name: "查看票面" }).click();
 
