@@ -394,6 +394,60 @@ test("history can sort by submission time and shows a paper-like ballot grid", a
   expect(verticalLabelColumns).toBe(1);
 });
 
+test("history ignores an older response that arrives after a refresh", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.getByRole("button", { name: /工会第一组/ }).click();
+
+  let releaseFirstResponse!: () => void;
+  const firstResponseCanFinish = new Promise<void>((resolve) => {
+    releaseFirstResponse = resolve;
+  });
+  let markFirstResponseCaptured!: () => void;
+  const firstResponseCaptured = new Promise<void>((resolve) => {
+    markFirstResponseCaptured = resolve;
+  });
+  let markFirstResponseFulfilled!: () => void;
+  const firstResponseFulfilled = new Promise<void>((resolve) => {
+    markFirstResponseFulfilled = resolve;
+  });
+  let historyRequestCount = 0;
+
+  await page.route("**/api/history/union-1", async (route) => {
+    historyRequestCount += 1;
+    if (historyRequestCount === 1) {
+      const oldResponse = await route.fetch();
+      markFirstResponseCaptured();
+      await firstResponseCanFinish;
+      await route.fulfill({ response: oldResponse });
+      markFirstResponseFulfilled();
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.getByRole("button", { name: "录入历史" }).click();
+  await firstResponseCaptured;
+
+  const recorder = await page.context().newPage();
+  await recorder.goto("./");
+  await recorder.getByRole("button", { name: /工会第一组/ }).click();
+  const newSequence = await submitValidUnionBallot(recorder);
+
+  const newRow = page
+    .getByRole("row")
+    .filter({ hasText: `第 ${newSequence} 号` });
+  await expect(newRow).toBeVisible({ timeout: 5_000 });
+
+  releaseFirstResponse();
+  await firstResponseFulfilled;
+  await page.waitForTimeout(100);
+  await expect(newRow).toBeVisible();
+  expect(historyRequestCount).toBeGreaterThanOrEqual(2);
+  await recorder.close();
+});
+
 test("withdrawing a ballot preserves its recorded choices in history", async ({
   page,
 }) => {

@@ -693,16 +693,27 @@ function History({
   const [expanded, setExpanded] = useState<number>();
   const [sortOrder, setSortOrder] = useState<HistorySortOrder>("desc");
   const [error, setError] = useState("");
+  const historyRequest = useRef(0);
   const [pendingWithdrawal, setPendingWithdrawal] =
     useState<BallotRecord | null>(null);
-  const load = () =>
-    api
-      .history(groupId)
-      .then(setRecords)
-      .catch((e) => setError(e.message));
+  const load = useCallback(async () => {
+    const request = ++historyRequest.current;
+    try {
+      const nextRecords = await api.history(groupId);
+      if (request !== historyRequest.current) return;
+      setRecords(nextRecords);
+      setError("");
+    } catch (error) {
+      if (request !== historyRequest.current) return;
+      setError((error as Error).message);
+    }
+  }, [groupId]);
   useEffect(() => {
     void load();
-  }, [groupId, refresh]);
+    return () => {
+      historyRequest.current += 1;
+    };
+  }, [load, refresh]);
   const sortedRecords = useMemo(
     () =>
       [...records].sort((first, second) => {
@@ -717,7 +728,7 @@ function History({
     setPendingWithdrawal(null);
     try {
       await api.withdraw(groupId, record.id);
-      load();
+      void load();
     } catch (e) {
       setError((e as Error).message);
     }
