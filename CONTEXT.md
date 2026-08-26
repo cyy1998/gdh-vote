@@ -17,7 +17,7 @@ The election of 7 members from the 8 listed candidates for the expense review co
 _Avoid_: Expense committee election, second election
 
 **Elector Limit**:
-The administrator-configured maximum number of non-withdrawn ballot records that may be accepted for one election. Each election has its own limit; withdrawing a record frees one place without reusing its sequence number.
+The administrator-configured maximum number of non-withdrawn ballot records that may be accepted for one election. Each election has its own limit, its non-withdrawn ballot numbers are confined to the range from 1 through this limit, and the limit cannot be reduced below the highest ballot number held by a non-withdrawn record.
 _Avoid_: Expected ballot count, required turnout
 
 **Listed Candidate**:
@@ -37,11 +37,19 @@ The number of non-withdrawn ballot records submitted by the currently selected r
 _Avoid_: Group history count, group result
 
 **Ballot Record**:
-A recording group's digital representation of one physical ballot for one election. Records receive a global sequential number within that election, and a withdrawn record's number is never reused during the current tally.
+A recording group's digital representation of one physical ballot for one election. Every record has a permanent record identifier, while only a non-withdrawn record occupies a ballot number in the election's shared number pool.
 _Avoid_: Vote, result row
 
+**Record Identifier**:
+The permanent identity of one ballot record, including after withdrawal. It is never reused by a replacement record.
+_Avoid_: Ballot number, sequence number
+
+**Ballot Number**:
+A number in the range from 1 through an election's elector limit, allocated from one pool shared by all recording groups. Non-withdrawn ballot records have unique ballot numbers, the smallest available number is allocated next, and when the election is full their ballot numbers are exactly the complete range.
+_Avoid_: Record identifier, permanent sequence number
+
 **Withdrawn Ballot Record**:
-A previously submitted ballot record that its recording group has removed from the tally because it was entered incorrectly. It remains in the shared recording history, contributes no totals, and is replaced by a newly numbered ballot record when re-entered.
+A previously submitted ballot record that its recording group has removed from the tally because it was entered incorrectly. It remains independently identifiable and retains its former ballot-number assignment as audit data, but has no current ballot number, contributes no totals, and has no designated replacement record; its former number returns to the election's shared pool.
 _Avoid_: Deleted ballot, edited ballot
 
 **Approval**:
@@ -81,7 +89,7 @@ The continuously available aggregate for one election. It contains the active ba
 _Avoid_: Final result, group result
 
 **Tally Reset**:
-The permanent removal of all ballot records and sequence numbers for one election or both elections so counting can restart from zero. A reset has no restore or backup operation.
+The permanent removal of all ballot records and ballot numbers for one election or both elections so counting can restart from zero. A reset has no restore or backup operation.
 _Avoid_: Start tally, end tally, archive tally
 
 **Administrator**:

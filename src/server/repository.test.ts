@@ -1,5 +1,6 @@
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createDefaultDraft } from "../shared/domain.js";
@@ -29,7 +30,7 @@ describe("tally repository", () => {
     const submitted = repository.submit("union-1", draft);
 
     expect(submitted).toMatchObject({
-      sequence: 1,
+      ballotNumber: 1,
       groupId: "union-1",
       valid: true,
       status: "active",
@@ -52,7 +53,7 @@ describe("tally repository", () => {
     ).toMatchObject({ approvals: 0, oppositions: 0, abstentions: 1 });
   });
 
-  it("withdraws without reusing a sequence and reset restarts from one", () => {
+  it("reuses a withdrawn ballot number and reset restarts from one", () => {
     const repository = createRepository();
     const draft = createDefaultDraft("expense");
     const initialGeneration = repository.syncState().generations.expense;
@@ -60,12 +61,41 @@ describe("tally repository", () => {
     expect(repository.syncState().generations.expense).toBe(initialGeneration);
     repository.withdraw("expense", first.id);
     expect(repository.result("expense")).toMatchObject({ activeBallots: 0 });
-    expect(repository.submit("expense", draft).sequence).toBe(2);
+    expect(repository.history("expense")).toContainEqual(
+      expect.objectContaining({ id: first.id, ballotNumber: null }),
+    );
+    const replacement = repository.submit("expense", draft);
+    expect(replacement).toMatchObject({ ballotNumber: 1, status: "active" });
+    expect(replacement.id).not.toBe(first.id);
     repository.reset(["expense"]);
     expect(repository.syncState().generations.expense).toBe(
       initialGeneration + 1,
     );
-    expect(repository.submit("expense", draft).sequence).toBe(1);
+    expect(repository.submit("expense", draft).ballotNumber).toBe(1);
+  });
+
+  it("allocates the smallest available ballot number across recording groups", () => {
+    const repository = createRepository();
+    repository.updateElectorLimits({ union: 5, expense: 5 });
+    const draft = createDefaultDraft("union");
+    draft.manualInvalid = true;
+
+    const first = repository.submit("union-1", draft);
+    const second = repository.submit("union-2", draft);
+    expect(repository.submit("union-1", draft).ballotNumber).toBe(3);
+    repository.withdraw("union-2", second.id);
+    repository.withdraw("union-1", first.id);
+
+    expect(repository.submit("union-3", draft).ballotNumber).toBe(1);
+    expect(repository.submit("union-2", draft).ballotNumber).toBe(2);
+    expect(repository.submit("union-3", draft).ballotNumber).toBe(4);
+    expect(repository.submit("union-1", draft).ballotNumber).toBe(5);
+    const activeBallotNumbers = (["union-1", "union-2", "union-3"] as const)
+      .flatMap((groupId) => repository.history(groupId))
+      .filter((record) => record.status === "active")
+      .map((record) => record.ballotNumber!)
+      .sort((first, second) => first - second);
+    expect(activeBallotNumbers).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("counts overvotes and manual-invalid ballots without candidate totals", () => {
@@ -136,25 +166,31 @@ describe("tally repository", () => {
     const records = Array.from({ length: 2 }, () =>
       repository.submit("expense", draft),
     );
-    expect(records.at(-1)?.sequence).toBe(2);
+    expect(records.at(-1)?.ballotNumber).toBe(2);
     expect(() => repository.submit("expense", draft)).toThrow(
       "已达到 2 张未撤销选票上限",
     );
     repository.withdraw("expense", records[0].id);
-    expect(repository.submit("expense", draft).sequence).toBe(3);
+    expect(repository.submit("expense", draft).ballotNumber).toBe(1);
   });
 
-  it("rejects an elector limit below the active ballot count", () => {
+  it("rejects an elector limit below the highest active ballot number", () => {
     const repository = createRepository();
-    repository.submit("expense", createDefaultDraft("expense"));
-    repository.submit("expense", createDefaultDraft("expense"));
+    const draft = createDefaultDraft("expense");
+    repository.submit("expense", draft);
+    const second = repository.submit("expense", draft);
+    repository.submit("expense", draft);
+    repository.withdraw("expense", second.id);
 
     expect(() =>
       repository.updateElectorLimits({ union: 10, expense: 0 }),
     ).toThrow("投票人数上限必须是正整数");
     expect(() =>
-      repository.updateElectorLimits({ union: 10, expense: 1 }),
-    ).toThrow("当前已有 2 张未撤销选票，上限不能低于该数量");
+      repository.updateElectorLimits({ union: 10, expense: 2 }),
+    ).toThrow("当前未撤销记录的最大票号为 3，上限不能低于该票号");
+    expect(() =>
+      repository.updateElectorLimits({ union: 10, expense: 3 }),
+    ).not.toThrow();
   });
 
   it("restores submitted and withdrawn records after reopening the database", () => {
@@ -170,9 +206,13 @@ describe("tally repository", () => {
       firstSession.close();
 
       const restarted = createTallyRepository(filename);
-      expect(restarted.history("expense").map((item) => item.status)).toEqual([
-        "active",
-        "withdrawn",
+      expect(
+        restarted
+          .history("expense")
+          .map(({ ballotNumber, status }) => ({ ballotNumber, status })),
+      ).toEqual([
+        { ballotNumber: 1, status: "active" },
+        { ballotNumber: null, status: "withdrawn" },
       ]);
       expect(restarted.result("expense")).toMatchObject({ activeBallots: 1 });
       expect(restarted.syncState().electorLimits).toEqual({
@@ -182,6 +222,51 @@ describe("tally repository", () => {
       restarted.close();
     } finally {
       rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("ballot-number migration", () => {
+  it("allows a new active record to reuse a withdrawn record's number", () => {
+    const sqlite = new Database(":memory:");
+    const applyMigration = (name: string) => {
+      const sql = readFileSync(path.resolve("drizzle", name), "utf8");
+      for (const statement of sql.split("--> statement-breakpoint"))
+        if (statement.trim()) sqlite.exec(statement);
+    };
+
+    try {
+      applyMigration("0000_fluffy_sandman.sql");
+      applyMigration("0001_moaning_silver_sable.sql");
+      applyMigration("0002_wonderful_purple_man.sql");
+      sqlite
+        .prepare(
+          "insert into election_state (election_id, next_sequence, version, generation, elector_limit) values ('union', 4, 1, 1, 5)",
+        )
+        .run();
+      const insertLegacyRecord = sqlite.prepare(
+        "insert into ballot_record (election_id, sequence, group_id, status, valid, manual_invalid, submitted_at) values ('union', ?, 'union-1', ?, 1, 0, ?)",
+      );
+      insertLegacyRecord.run(1, "active", "2026-08-26T01:00:00.000Z");
+      insertLegacyRecord.run(2, "active", "2026-08-26T01:01:00.000Z");
+      insertLegacyRecord.run(3, "withdrawn", "2026-08-26T01:02:00.000Z");
+
+      applyMigration("0003_stiff_devos.sql");
+
+      const stateColumns = sqlite
+        .prepare("pragma table_info(election_state)")
+        .all() as Array<{ name: string }>;
+      expect(stateColumns.map((column) => column.name)).not.toContain(
+        "next_sequence",
+      );
+      expect(() =>
+        insertLegacyRecord.run(3, "active", "2026-08-26T01:03:00.000Z"),
+      ).not.toThrow();
+      expect(() =>
+        insertLegacyRecord.run(3, "active", "2026-08-26T01:04:00.000Z"),
+      ).toThrow(/UNIQUE constraint failed/);
+    } finally {
+      sqlite.close();
     }
   });
 });

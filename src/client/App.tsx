@@ -239,7 +239,7 @@ function Recorder({
   const [progressError, setProgressError] = useState(false);
   const progressRequest = useRef(0);
   const [submissionNotice, setSubmissionNotice] = useState<{
-    sequence: number;
+    ballotNumber: number;
     valid: boolean;
   } | null>(null);
   const [pendingSubmission, setPendingSubmission] = useState<{
@@ -308,8 +308,13 @@ function Recorder({
   const performSubmission = async (next: BallotDraft) => {
     try {
       const record = await api.submit(groupId, next);
+      if (record.ballotNumber === null)
+        throw new Error("服务器未返回新选票的票号");
       setErrorMessage("");
-      setSubmissionNotice({ sequence: record.sequence, valid: record.valid });
+      setSubmissionNotice({
+        ballotNumber: record.ballotNumber,
+        valid: record.valid,
+      });
       const empty = createDefaultDraft(electionId);
       setDraft(empty);
       localStorage.setItem(
@@ -382,7 +387,7 @@ function Recorder({
             ✓
           </span>
           <strong className="submit-toast-copy">
-            第 {submissionNotice.sequence} 号
+            第 {submissionNotice.ballotNumber} 号
             {submissionNotice.valid ? "选票" : "无效票"}录入成功
           </strong>
           <button
@@ -703,7 +708,7 @@ function History({
       [...records].sort((first, second) => {
         const comparison =
           first.submittedAt.localeCompare(second.submittedAt) ||
-          first.sequence - second.sequence;
+          first.id - second.id;
         return sortOrder === "asc" ? comparison : -comparison;
       }),
     [records, sortOrder],
@@ -731,7 +736,7 @@ function History({
               !
             </span>
             <h3 id="withdraw-confirm-title">
-              确认撤销第 {pendingWithdrawal.sequence} 号记录？
+              确认撤销第 {pendingWithdrawal.ballotNumber} 号记录？
             </h3>
             <p>原记录将保留在录入历史中，并标记为已撤销。</p>
             <div className="confirm-dialog-actions">
@@ -780,7 +785,7 @@ function History({
         {error && <div className="error">{error}</div>}
         <div className="table" role="table" aria-label="录入历史">
           <div className="table-row table-head" role="row">
-            <span role="columnheader">序号</span>
+            <span role="columnheader">票号</span>
             <span role="columnheader">提交时间</span>
             <span role="columnheader">状态</span>
             <span role="columnheader">操作</span>
@@ -788,7 +793,11 @@ function History({
           {sortedRecords.map((record) => (
             <div key={record.id}>
               <div className="table-row" role="row">
-                <strong role="cell">第 {record.sequence} 号</strong>
+                <strong role="cell">
+                  {record.ballotNumber === null
+                    ? "-"
+                    : `第 ${record.ballotNumber} 号`}
+                </strong>
                 <span role="cell">
                   {new Date(record.submittedAt).toLocaleString("zh-CN")}
                 </span>
@@ -887,6 +896,10 @@ function BallotChoiceGrid({
 
 function BallotSheet({ record }: { record: BallotRecord }) {
   const election = ELECTIONS[record.electionId];
+  const ballotLabel =
+    record.ballotNumber === null
+      ? "已撤销选票"
+      : `第 ${record.ballotNumber} 号选票`;
   const writeInChoices = Object.fromEntries(
     record.writeIns.map((name) => [name, "approval" as const]),
   );
@@ -894,13 +907,13 @@ function BallotSheet({ record }: { record: BallotRecord }) {
     <section
       className="record-detail ballot-sheet"
       role="region"
-      aria-label={`第 ${record.sequence} 号选票票面`}
+      aria-label={`${ballotLabel}票面`}
     >
       <div className="ballot-sheet-heading">
         <div>
           <span className="eyebrow">选票票面</span>
           <h3>
-            第 {record.sequence} 号 · {election.shortName}
+            {ballotLabel} · {election.shortName}
           </h3>
         </div>
         <div className="ballot-sheet-legend" aria-label="票面符号说明">
@@ -1122,7 +1135,7 @@ function Admin() {
               !
             </span>
             <h3 id="admin-reset-confirm-title">确认{pendingReset.label}？</h3>
-            <p>此操作将永久删除全部相关记录，序号从 1 重新开始，且无法恢复。</p>
+            <p>此操作将永久删除全部相关记录，票号从 1 重新开始，且无法恢复。</p>
             <div className="confirm-dialog-actions">
               <button
                 type="button"
@@ -1209,7 +1222,7 @@ function Admin() {
         <div className="admin-section">
           <h3>计票清空</h3>
           <div className="warning">
-            清空会永久删除目标选举的全部记录并重置序号，不提供备份与恢复。
+            清空会永久删除目标选举的全部记录并重置票号，不提供备份与恢复。
           </div>
           <div className="danger-actions">
             <button

@@ -47,7 +47,10 @@ describe("tally HTTP interface", () => {
       body: JSON.stringify({ groupId: "union-1", draft }),
     });
     expect(submitted.status).toBe(201);
-    expect(await submitted.json()).toMatchObject({ sequence: 1, valid: true });
+    expect(await submitted.json()).toMatchObject({
+      ballotNumber: 1,
+      valid: true,
+    });
 
     const response = await app.request("/api/results/union");
     expect(await response.json()).toMatchObject({
@@ -83,6 +86,29 @@ describe("tally HTTP interface", () => {
     expect((await app.request("/api/recording-progress/unknown")).status).toBe(
       404,
     );
+  });
+
+  it("hides a withdrawn record's former ballot number from history", async () => {
+    repository = createTallyRepository(":memory:");
+    const app = createApp(repository);
+    const draft = createDefaultDraft("expense");
+    const withdrawn = repository.submit("expense", draft);
+    repository.withdraw("expense", withdrawn.id);
+    expect(repository.submit("expense", draft).ballotNumber).toBe(1);
+
+    const response = await app.request("/api/history/expense");
+    const history = (await response.json()) as Array<Record<string, unknown>>;
+
+    expect(response.status).toBe(200);
+    expect(history).toHaveLength(2);
+    expect(history).toContainEqual(
+      expect.objectContaining({
+        id: withdrawn.id,
+        ballotNumber: null,
+        status: "withdrawn",
+      }),
+    );
+    expect(history.every((record) => !("sequence" in record))).toBe(true);
   });
 
   it("does not expose the removed server-sent events endpoint", async () => {

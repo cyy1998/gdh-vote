@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import path from "node:path";
@@ -33,7 +33,7 @@ export class TallyError extends Error {
 
 export interface BallotRecordView {
   id: number;
-  sequence: number;
+  ballotNumber: number | null;
   electionId: ElectionId;
   groupId: RecordingGroupId;
   status: "active" | "withdrawn";
@@ -91,8 +91,8 @@ export function createTallyRepository(
   migrate(db, { migrationsFolder });
   db.insert(electionState)
     .values([
-      { electionId: "union", nextSequence: 1, version: 1, generation: 1 },
-      { electionId: "expense", nextSequence: 1, version: 1, generation: 1 },
+      { electionId: "union", version: 1, generation: 1 },
+      { electionId: "expense", version: 1, generation: 1 },
     ])
     .onConflictDoNothing()
     .run();
@@ -101,7 +101,7 @@ export function createTallyRepository(
     row: typeof ballotRecords.$inferSelect,
   ): BallotRecordView => ({
     id: row.id,
-    sequence: row.sequence,
+    ballotNumber: row.status === "active" ? row.ballotNumber : null,
     electionId: row.electionId as ElectionId,
     groupId: row.groupId as RecordingGroupId,
     status: row.status as "active" | "withdrawn",
@@ -140,8 +140,8 @@ export function createTallyRepository(
           .where(eq(electionState.electionId, draft.electionId))
           .get();
         if (!state) throw new TallyError("STATE_MISSING", "选举状态不存在");
-        const activeCount = tx
-          .select()
+        const occupiedBallotNumbers = tx
+          .select({ ballotNumber: ballotRecords.ballotNumber })
           .from(ballotRecords)
           .where(
             and(
@@ -149,8 +149,20 @@ export function createTallyRepository(
               eq(ballotRecords.status, "active"),
             ),
           )
-          .all().length;
-        if (activeCount >= state.electorLimit)
+          .orderBy(asc(ballotRecords.ballotNumber))
+          .all();
+        if (occupiedBallotNumbers.length >= state.electorLimit)
+          throw new TallyError(
+            "ELECTOR_LIMIT",
+            `已达到 ${state.electorLimit} 张未撤销选票上限`,
+          );
+        let ballotNumber = 1;
+        for (const occupied of occupiedBallotNumbers) {
+          if (occupied.ballotNumber < ballotNumber) continue;
+          if (occupied.ballotNumber > ballotNumber) break;
+          ballotNumber += 1;
+        }
+        if (ballotNumber > state.electorLimit)
           throw new TallyError(
             "ELECTOR_LIMIT",
             `已达到 ${state.electorLimit} 张未撤销选票上限`,
@@ -160,7 +172,7 @@ export function createTallyRepository(
           .insert(ballotRecords)
           .values({
             electionId: draft.electionId,
-            sequence: state.nextSequence,
+            ballotNumber,
             groupId,
             status: "active",
             valid: validation.valid,
@@ -189,10 +201,7 @@ export function createTallyRepository(
             )
             .run();
         tx.update(electionState)
-          .set({
-            nextSequence: state.nextSequence + 1,
-            version: state.version + 1,
-          })
+          .set({ version: state.version + 1 })
           .where(eq(electionState.electionId, draft.electionId))
           .run();
         return materialize(row);
@@ -203,7 +212,7 @@ export function createTallyRepository(
         .select()
         .from(ballotRecords)
         .where(eq(ballotRecords.groupId, groupId))
-        .orderBy(desc(ballotRecords.sequence))
+        .orderBy(desc(ballotRecords.submittedAt), desc(ballotRecords.id))
         .all()
         .map(materialize);
     },
@@ -290,7 +299,6 @@ export function createTallyRepository(
             .get()!;
           tx.update(electionState)
             .set({
-              nextSequence: 1,
               version: state.version + 1,
               generation: state.generation + 1,
             })
@@ -308,26 +316,28 @@ export function createTallyRepository(
             .where(eq(electionState.electionId, electionId))
             .get();
           if (!state) throw new TallyError("STATE_MISSING", "选举状态不存在");
-          const activeCount = tx
-            .select()
-            .from(ballotRecords)
-            .where(
-              and(
-                eq(ballotRecords.electionId, electionId),
-                eq(ballotRecords.status, "active"),
-              ),
-            )
-            .all().length;
+          const highestActiveBallotNumber =
+            tx
+              .select({ ballotNumber: ballotRecords.ballotNumber })
+              .from(ballotRecords)
+              .where(
+                and(
+                  eq(ballotRecords.electionId, electionId),
+                  eq(ballotRecords.status, "active"),
+                ),
+              )
+              .orderBy(desc(ballotRecords.ballotNumber))
+              .get()?.ballotNumber ?? 0;
           const nextLimit = limits[electionId];
           if (!Number.isInteger(nextLimit) || nextLimit <= 0)
             throw new TallyError(
               "INVALID_ELECTOR_LIMIT",
               "投票人数上限必须是正整数",
             );
-          if (nextLimit < activeCount)
+          if (nextLimit < highestActiveBallotNumber)
             throw new TallyError(
               "ELECTOR_LIMIT_BELOW_ACTIVE",
-              `${ELECTIONS[electionId].shortName}当前已有 ${activeCount} 张未撤销选票，上限不能低于该数量`,
+              `${ELECTIONS[electionId].shortName}当前未撤销记录的最大票号为 ${highestActiveBallotNumber}，上限不能低于该票号`,
             );
           if (nextLimit === state.electorLimit) continue;
           tx.update(electionState)

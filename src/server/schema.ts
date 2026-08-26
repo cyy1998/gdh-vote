@@ -4,10 +4,10 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 export const electionState = sqliteTable("election_state", {
   electionId: text("election_id").primaryKey(),
-  nextSequence: integer("next_sequence").notNull().default(1),
   version: integer("version").notNull().default(1),
   generation: integer("generation").notNull().default(1),
   electorLimit: integer("elector_limit").notNull().default(180),
@@ -18,7 +18,7 @@ export const ballotRecords = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     electionId: text("election_id").notNull(),
-    sequence: integer("sequence").notNull(),
+    ballotNumber: integer("sequence").notNull(),
     groupId: text("group_id").notNull(),
     status: text("status").notNull().default("active"),
     valid: integer("valid", { mode: "boolean" }).notNull(),
@@ -27,10 +27,9 @@ export const ballotRecords = sqliteTable(
     withdrawnAt: text("withdrawn_at"),
   },
   (table) => [
-    uniqueIndex("ballot_election_sequence").on(
-      table.electionId,
-      table.sequence,
-    ),
+    uniqueIndex("ballot_active_election_sequence")
+      .on(table.electionId, table.ballotNumber)
+      .where(sql`${table.status} = 'active'`),
   ],
 );
 

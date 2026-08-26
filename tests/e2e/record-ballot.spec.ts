@@ -19,7 +19,7 @@ async function submitValidUnionBallot(page: Page, writeIn?: string) {
   return Number(match![1]);
 }
 
-test("recording group submits a valid union ballot and sees its sequence", async ({
+test("recording group submits a valid union ballot and sees its ballot number", async ({
   page,
 }) => {
   await page.goto("./");
@@ -351,27 +351,29 @@ test("history can sort by submission time and shows a paper-like ballot grid", a
   await page.goto("./");
   await page.getByRole("button", { name: /工会第三组/ }).click();
 
-  const earlierSequence = await submitValidUnionBallot(page);
-  const laterSequence = await submitValidUnionBallot(page, "张三");
+  const earlierBallotNumber = await submitValidUnionBallot(page);
+  const laterBallotNumber = await submitValidUnionBallot(page, "张三");
   await page.getByRole("button", { name: "录入历史" }).click();
 
   const historyRows = page.getByRole("row").filter({ hasText: /第 \d+ 号/ });
-  await expect(historyRows.first()).toContainText(`第 ${laterSequence} 号`);
-  await expect(historyRows.nth(1)).toContainText(`第 ${earlierSequence} 号`);
+  await expect(historyRows.first()).toContainText(`第 ${laterBallotNumber} 号`);
+  await expect(historyRows.nth(1)).toContainText(
+    `第 ${earlierBallotNumber} 号`,
+  );
 
   const sort = page.getByRole("combobox", { name: "提交时间排序" });
   await sort.selectOption("asc");
   const rowCount = await historyRows.count();
   await expect(historyRows.nth(rowCount - 2)).toContainText(
-    `第 ${earlierSequence} 号`,
+    `第 ${earlierBallotNumber} 号`,
   );
-  await expect(historyRows.last()).toContainText(`第 ${laterSequence} 号`);
+  await expect(historyRows.last()).toContainText(`第 ${laterBallotNumber} 号`);
 
   await sort.selectOption("desc");
   await historyRows.first().getByRole("button", { name: "查看票面" }).click();
 
   const ballot = page.getByRole("region", {
-    name: `第 ${laterSequence} 号选票票面`,
+    name: `第 ${laterBallotNumber} 号选票票面`,
   });
   const listedCandidates = ballot.getByRole("list", {
     name: "正式候选人票面",
@@ -398,11 +400,10 @@ test("withdrawing a ballot preserves its recorded choices in history", async ({
   await page.goto("./");
   await page.getByRole("button", { name: /工会第二组/ }).click();
 
-  const sequence = await submitValidUnionBallot(page);
+  const ballotNumber = await submitValidUnionBallot(page);
   await page.getByRole("button", { name: "录入历史" }).click();
-  const recordRow = page
-    .getByRole("row")
-    .filter({ hasText: `第 ${sequence} 号` });
+  const recordRow = page.getByRole("row").nth(1);
+  await expect(recordRow).toContainText(`第 ${ballotNumber} 号`);
 
   let nativeDialogCount = 0;
   page.on("dialog", (dialog) => {
@@ -411,7 +412,7 @@ test("withdrawing a ballot preserves its recorded choices in history", async ({
   });
   await recordRow.getByRole("button", { name: "撤销" }).click();
   const confirmation = page.getByRole("dialog", {
-    name: `确认撤销第 ${sequence} 号记录？`,
+    name: `确认撤销第 ${ballotNumber} 号记录？`,
   });
   await expect(confirmation).toBeVisible();
   await expect(confirmation).toContainText("原记录将保留在录入历史中");
@@ -419,11 +420,14 @@ test("withdrawing a ballot preserves its recorded choices in history", async ({
   await confirmation.getByRole("button", { name: "确认撤销" }).click();
 
   await expect(recordRow).toContainText("已撤销");
+  await expect(recordRow.getByRole("cell").first()).toHaveText("-");
+  await expect(recordRow).not.toContainText(`第 ${ballotNumber} 号`);
   await recordRow.getByRole("button", { name: "查看票面" }).click();
 
   const ballot = page.getByRole("region", {
-    name: `第 ${sequence} 号选票票面`,
+    name: "已撤销选票票面",
   });
+  await expect(ballot).not.toContainText(`第 ${ballotNumber} 号`);
   const listedCandidates = ballot.getByRole("list", {
     name: "正式候选人票面",
   });

@@ -7,7 +7,7 @@ import type {
 
 export interface BallotRecord {
   id: number;
-  sequence: number;
+  ballotNumber: number | null;
   electionId: ElectionId;
   groupId: RecordingGroupId;
   status: "active" | "withdrawn";
