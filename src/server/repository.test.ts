@@ -23,7 +23,8 @@ describe("tally repository", () => {
     const draft = createDefaultDraft("union");
     draft.choices["王凯"] = "opposition";
     draft.choices["元颖斌"] = "opposition";
-    draft.choices["邢辉"] = "opposition";
+    draft.choices["邢辉"] = "abstention";
+    draft.choices["朱川红"] = "opposition";
 
     const submitted = repository.submit("union-1", draft);
 
@@ -43,7 +44,12 @@ describe("tally repository", () => {
       repository
         .result("union")
         .candidates.find((candidate) => candidate.name === "王凯"),
-    ).toMatchObject({ approvals: 0, oppositions: 1 });
+    ).toMatchObject({ approvals: 0, oppositions: 1, abstentions: 0 });
+    expect(
+      repository
+        .result("union")
+        .candidates.find((candidate) => candidate.name === "邢辉"),
+    ).toMatchObject({ approvals: 0, oppositions: 0, abstentions: 1 });
   });
 
   it("withdraws without reusing a sequence and reset restarts from one", () => {
@@ -78,7 +84,9 @@ describe("tally repository", () => {
         .result("expense")
         .candidates.every(
           (candidate) =>
-            candidate.approvals === 0 && candidate.oppositions === 0,
+            candidate.approvals === 0 &&
+            candidate.oppositions === 0 &&
+            candidate.abstentions === 0,
         ),
     ).toBe(true);
     expect(repository.result("union")).toMatchObject({
@@ -88,18 +96,65 @@ describe("tally repository", () => {
     });
   });
 
-  it("enforces the 180 active-ballot limit and allows another ballot after withdrawal", () => {
+  it("returns group and election recording counts from one progress snapshot", () => {
+    const repository = createRepository();
+    repository.updateElectorLimits({ union: 5, expense: 5 });
+    const valid = createDefaultDraft("union");
+    valid.choices["王凯"] = "opposition";
+    valid.choices["元颖斌"] = "opposition";
+    valid.choices["邢辉"] = "opposition";
+    const invalid = createDefaultDraft("union");
+    invalid.manualInvalid = true;
+
+    const withdrawn = repository.submit("union-1", valid);
+    repository.submit("union-1", invalid);
+    repository.submit("union-2", valid);
+    repository.withdraw("union-1", withdrawn.id);
+
+    expect(repository.recordingProgress("union-1")).toMatchObject({
+      groupId: "union-1",
+      electionId: "union",
+      groupActiveBallots: 1,
+      electionActiveBallots: 2,
+      electorLimit: 5,
+    });
+    expect(repository.recordingProgress("union-2")).toMatchObject({
+      groupActiveBallots: 1,
+      electionActiveBallots: 2,
+    });
+    repository.submit("expense", createDefaultDraft("expense"));
+    expect(repository.recordingProgress("expense")).toMatchObject({
+      groupActiveBallots: 1,
+      electionActiveBallots: 1,
+    });
+  });
+
+  it("enforces the configured active-ballot limit and allows another ballot after withdrawal", () => {
     const repository = createRepository();
     const draft = createDefaultDraft("expense");
-    const records = Array.from({ length: 180 }, () =>
+    repository.updateElectorLimits({ union: 3, expense: 2 });
+    const records = Array.from({ length: 2 }, () =>
       repository.submit("expense", draft),
     );
-    expect(records.at(-1)?.sequence).toBe(180);
+    expect(records.at(-1)?.sequence).toBe(2);
     expect(() => repository.submit("expense", draft)).toThrow(
-      "已达到 180 张未撤销选票上限",
+      "已达到 2 张未撤销选票上限",
     );
     repository.withdraw("expense", records[0].id);
-    expect(repository.submit("expense", draft).sequence).toBe(181);
+    expect(repository.submit("expense", draft).sequence).toBe(3);
+  });
+
+  it("rejects an elector limit below the active ballot count", () => {
+    const repository = createRepository();
+    repository.submit("expense", createDefaultDraft("expense"));
+    repository.submit("expense", createDefaultDraft("expense"));
+
+    expect(() =>
+      repository.updateElectorLimits({ union: 10, expense: 0 }),
+    ).toThrow("投票人数上限必须是正整数");
+    expect(() =>
+      repository.updateElectorLimits({ union: 10, expense: 1 }),
+    ).toThrow("当前已有 2 张未撤销选票，上限不能低于该数量");
   });
 
   it("restores submitted and withdrawn records after reopening the database", () => {
@@ -111,6 +166,7 @@ describe("tally repository", () => {
       const record = firstSession.submit("expense", draft);
       firstSession.withdraw("expense", record.id);
       firstSession.submit("expense", draft);
+      firstSession.updateElectorLimits({ union: 170, expense: 160 });
       firstSession.close();
 
       const restarted = createTallyRepository(filename);
@@ -119,6 +175,10 @@ describe("tally repository", () => {
         "withdrawn",
       ]);
       expect(restarted.result("expense")).toMatchObject({ activeBallots: 1 });
+      expect(restarted.syncState().electorLimits).toEqual({
+        union: 170,
+        expense: 160,
+      });
       restarted.close();
     } finally {
       rmSync(directory, { recursive: true, force: true });

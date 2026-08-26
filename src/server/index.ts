@@ -31,7 +31,7 @@ const clientDirectory = path.resolve("dist/client");
 mountClient(app, clientDirectory, process.env.TALLY_BASE_PATH);
 const port = Number(process.env.PORT ?? 3000);
 serve({ fetch: app.fetch, hostname: "0.0.0.0", port }, (info) =>
-  console.log(`计票助手已启动：http://localhost:${info.port}`),
+  console.log(`计票系统已启动：http://localhost:${info.port}`),
 );
 
 for (const signal of ["SIGINT", "SIGTERM"] as const)

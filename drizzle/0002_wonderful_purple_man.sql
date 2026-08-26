@@ -1,0 +1,1 @@
+ALTER TABLE `election_state` ADD `elector_limit` integer DEFAULT 180 NOT NULL;

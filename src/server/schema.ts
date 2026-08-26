@@ -10,6 +10,7 @@ export const electionState = sqliteTable("election_state", {
   nextSequence: integer("next_sequence").notNull().default(1),
   version: integer("version").notNull().default(1),
   generation: integer("generation").notNull().default(1),
+  electorLimit: integer("elector_limit").notNull().default(180),
 });
 
 export const ballotRecords = sqliteTable(

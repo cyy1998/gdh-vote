@@ -31,6 +31,13 @@ const resetSchema = z.object({
   password: z.string(),
   electionIds: z.array(electionIdSchema).min(1),
 });
+const electorLimitsSchema = z.object({
+  password: z.string(),
+  electorLimits: z.object({
+    union: z.number().int().positive(),
+    expense: z.number().int().positive(),
+  }),
+});
 
 function verifyPassword(password: string, encoded?: string) {
   if (!encoded) return false;
@@ -77,13 +84,22 @@ export function createApp(
     );
   });
 
-  routes.get("/api/config", (c) =>
-    c.json({
-      elections: ELECTIONS,
+  routes.get("/api/config", (c) => {
+    const state = repository.syncState();
+    return c.json({
+      elections: Object.fromEntries(
+        (Object.keys(ELECTIONS) as ElectionId[]).map((electionId) => [
+          electionId,
+          {
+            ...ELECTIONS[electionId],
+            electorLimit: state.electorLimits[electionId],
+          },
+        ]),
+      ),
       recordingGroups: RECORDING_GROUPS,
-      ...repository.syncState(),
-    }),
-  );
+      ...state,
+    });
+  });
   routes.get("/api/results/:electionId", (c) => {
     const electionId = c.req.param("electionId") as ElectionId;
     if (!ELECTIONS[electionId]) return c.json({ error: "未知选举" }, 404);
@@ -93,6 +109,11 @@ export function createApp(
     const groupId = c.req.param("groupId") as RecordingGroupId;
     if (!RECORDING_GROUPS[groupId]) return c.json({ error: "未知录入组" }, 404);
     return c.json(repository.history(groupId));
+  });
+  routes.get("/api/recording-progress/:groupId", (c) => {
+    const groupId = c.req.param("groupId") as RecordingGroupId;
+    if (!RECORDING_GROUPS[groupId]) return c.json({ error: "未知录入组" }, 404);
+    return c.json(repository.recordingProgress(groupId));
   });
   routes.post("/api/ballots", async (c) => {
     const parsed = ballotSubmissionSchema.safeParse(
@@ -129,6 +150,26 @@ export function createApp(
     if (!verifyPassword(password, options.adminPasswordHash))
       return c.json({ error: "管理员口令错误", code: "UNAUTHORIZED" }, 401);
     repository.reset([...new Set(electionIds)]);
+    return c.json({ ok: true, ...repository.syncState() });
+  });
+  routes.post("/api/admin/elector-limits", async (c) => {
+    if (!options.adminPasswordHash)
+      return c.json(
+        { error: "管理员口令尚未配置", code: "ADMIN_NOT_CONFIGURED" },
+        503,
+      );
+    const parsed = electorLimitsSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    if (!parsed.success)
+      return c.json(
+        { error: "投票人数上限必须是正整数", code: "BAD_REQUEST" },
+        400,
+      );
+    const { password, electorLimits } = parsed.data;
+    if (!verifyPassword(password, options.adminPasswordHash))
+      return c.json({ error: "管理员口令错误", code: "UNAUTHORIZED" }, 401);
+    repository.updateElectorLimits(electorLimits);
     return c.json({ ok: true, ...repository.syncState() });
   });
 

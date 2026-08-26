@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import path from "node:path";
@@ -54,15 +54,27 @@ export interface TallyResult {
   candidates: RankedCandidate[];
 }
 
+export interface RecordingProgress {
+  groupId: RecordingGroupId;
+  electionId: ElectionId;
+  version: number;
+  groupActiveBallots: number;
+  electionActiveBallots: number;
+  electorLimit: number;
+}
+
 export interface TallyRepository {
   submit(groupId: RecordingGroupId, draft: BallotDraft): BallotRecordView;
   history(groupId: RecordingGroupId): BallotRecordView[];
+  recordingProgress(groupId: RecordingGroupId): RecordingProgress;
   withdraw(groupId: RecordingGroupId, ballotId: number): void;
   reset(electionIds: ElectionId[]): void;
+  updateElectorLimits(limits: Record<ElectionId, number>): void;
   result(electionId: ElectionId): TallyResult;
   syncState(): {
     versions: Record<ElectionId, number>;
     generations: Record<ElectionId, number>;
+    electorLimits: Record<ElectionId, number>;
   };
   close(): void;
 }
@@ -138,8 +150,11 @@ export function createTallyRepository(
             ),
           )
           .all().length;
-        if (activeCount >= ELECTIONS[draft.electionId].electorLimit)
-          throw new TallyError("ELECTOR_LIMIT", "已达到 180 张未撤销选票上限");
+        if (activeCount >= state.electorLimit)
+          throw new TallyError(
+            "ELECTOR_LIMIT",
+            `已达到 ${state.electorLimit} 张未撤销选票上限`,
+          );
         const submittedAt = new Date().toISOString();
         const row = tx
           .insert(ballotRecords)
@@ -191,6 +206,46 @@ export function createTallyRepository(
         .orderBy(desc(ballotRecords.sequence))
         .all()
         .map(materialize);
+    },
+    recordingProgress(groupId) {
+      const group = RECORDING_GROUPS[groupId];
+      if (!group) throw new TallyError("NOT_FOUND", "未知录入组");
+      return db.transaction((tx) => {
+        const state = tx
+          .select()
+          .from(electionState)
+          .where(eq(electionState.electionId, group.electionId))
+          .get();
+        if (!state) throw new TallyError("STATE_MISSING", "选举状态不存在");
+        const groupActiveBallots = tx
+          .select({ value: count() })
+          .from(ballotRecords)
+          .where(
+            and(
+              eq(ballotRecords.groupId, groupId),
+              eq(ballotRecords.status, "active"),
+            ),
+          )
+          .get()!.value;
+        const electionActiveBallots = tx
+          .select({ value: count() })
+          .from(ballotRecords)
+          .where(
+            and(
+              eq(ballotRecords.electionId, group.electionId),
+              eq(ballotRecords.status, "active"),
+            ),
+          )
+          .get()!.value;
+        return {
+          groupId,
+          electionId: group.electionId,
+          version: state.version,
+          groupActiveBallots,
+          electionActiveBallots,
+          electorLimit: state.electorLimit,
+        };
+      });
     },
     withdraw(groupId, ballotId) {
       db.transaction((tx) => {
@@ -244,6 +299,44 @@ export function createTallyRepository(
         }
       });
     },
+    updateElectorLimits(limits) {
+      db.transaction((tx) => {
+        for (const electionId of ["union", "expense"] as const) {
+          const state = tx
+            .select()
+            .from(electionState)
+            .where(eq(electionState.electionId, electionId))
+            .get();
+          if (!state) throw new TallyError("STATE_MISSING", "选举状态不存在");
+          const activeCount = tx
+            .select()
+            .from(ballotRecords)
+            .where(
+              and(
+                eq(ballotRecords.electionId, electionId),
+                eq(ballotRecords.status, "active"),
+              ),
+            )
+            .all().length;
+          const nextLimit = limits[electionId];
+          if (!Number.isInteger(nextLimit) || nextLimit <= 0)
+            throw new TallyError(
+              "INVALID_ELECTOR_LIMIT",
+              "投票人数上限必须是正整数",
+            );
+          if (nextLimit < activeCount)
+            throw new TallyError(
+              "ELECTOR_LIMIT_BELOW_ACTIVE",
+              `${ELECTIONS[electionId].shortName}当前已有 ${activeCount} 张未撤销选票，上限不能低于该数量`,
+            );
+          if (nextLimit === state.electorLimit) continue;
+          tx.update(electionState)
+            .set({ electorLimit: nextLimit, version: state.version + 1 })
+            .where(eq(electionState.electionId, electionId))
+            .run();
+        }
+      });
+    },
     result(electionId) {
       const state = db
         .select()
@@ -264,7 +357,13 @@ export function createTallyRepository(
       const totals = new Map<string, CandidateTotal>(
         ELECTIONS[electionId].candidates.map((name) => [
           name,
-          { name, kind: "listed", approvals: 0, oppositions: 0 },
+          {
+            name,
+            kind: "listed",
+            approvals: 0,
+            oppositions: 0,
+            abstentions: 0,
+          },
         ]),
       );
       if (valid.length) {
@@ -281,6 +380,7 @@ export function createTallyRepository(
           const total = totals.get(choice.candidateName)!;
           if (choice.choice === "approval") total.approvals += 1;
           if (choice.choice === "opposition") total.oppositions += 1;
+          if (choice.choice === "abstention") total.abstentions += 1;
         }
         for (const writeIn of db
           .select()
@@ -297,6 +397,7 @@ export function createTallyRepository(
             kind: "write-in" as const,
             approvals: 0,
             oppositions: 0,
+            abstentions: 0,
           };
           total.approvals += 1;
           totals.set(writeIn.displayName, total);
@@ -318,6 +419,10 @@ export function createTallyRepository(
       return {
         versions: { union: union.version, expense: expense.version },
         generations: { union: union.generation, expense: expense.generation },
+        electorLimits: {
+          union: union.electorLimit,
+          expense: expense.electorLimit,
+        },
       };
     },
     close() {

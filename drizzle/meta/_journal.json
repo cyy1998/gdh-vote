@@ -15,6 +15,13 @@
       "when": 1787576196974,
       "tag": "0001_moaning_silver_sable",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787713408519,
+      "tag": "0002_wonderful_purple_man",
+      "breakpoints": true
     }
   ]
 }

@@ -37,6 +37,21 @@ describe("ballot recording rules", () => {
     expect(validateDraft(draft)).toMatchObject({ canSubmit: false });
   });
 
+  it("does not include write-ins when checking the listed-candidate approval limit", () => {
+    const draft = createDefaultDraft("union");
+    draft.choices["王凯"] = "opposition";
+    draft.choices["元颖斌"] = "opposition";
+    draft.choices["邢辉"] = "opposition";
+    draft.writeIns = ["张三"];
+
+    expect(validateDraft(draft)).toMatchObject({
+      canSubmit: true,
+      valid: true,
+      overvote: false,
+      approvals: 23,
+    });
+  });
+
   it("counts an empty write-in input as an occupied slot and requires a name", () => {
     const draft = createDefaultDraft("union");
     draft.choices["王凯"] = "opposition";
@@ -66,10 +81,34 @@ describe("ballot recording rules", () => {
   it("uses competition ranking and pinyin display order for exact ties", () => {
     expect(
       rankCandidates([
-        { name: "周晓红", kind: "listed", approvals: 9, oppositions: 1 },
-        { name: "李春君", kind: "listed", approvals: 10, oppositions: 2 },
-        { name: "金岚", kind: "listed", approvals: 9, oppositions: 1 },
-        { name: "孟佳宁", kind: "listed", approvals: 8, oppositions: 0 },
+        {
+          name: "周晓红",
+          kind: "listed",
+          approvals: 9,
+          oppositions: 1,
+          abstentions: 0,
+        },
+        {
+          name: "李春君",
+          kind: "listed",
+          approvals: 10,
+          oppositions: 2,
+          abstentions: 0,
+        },
+        {
+          name: "金岚",
+          kind: "listed",
+          approvals: 9,
+          oppositions: 1,
+          abstentions: 3,
+        },
+        {
+          name: "孟佳宁",
+          kind: "listed",
+          approvals: 8,
+          oppositions: 0,
+          abstentions: 0,
+        },
       ]),
     ).toEqual([
       {
@@ -77,11 +116,33 @@ describe("ballot recording rules", () => {
         kind: "listed",
         approvals: 10,
         oppositions: 2,
+        abstentions: 0,
         rank: 1,
       },
-      { name: "金岚", kind: "listed", approvals: 9, oppositions: 1, rank: 2 },
-      { name: "周晓红", kind: "listed", approvals: 9, oppositions: 1, rank: 2 },
-      { name: "孟佳宁", kind: "listed", approvals: 8, oppositions: 0, rank: 4 },
+      {
+        name: "金岚",
+        kind: "listed",
+        approvals: 9,
+        oppositions: 1,
+        abstentions: 3,
+        rank: 2,
+      },
+      {
+        name: "周晓红",
+        kind: "listed",
+        approvals: 9,
+        oppositions: 1,
+        abstentions: 0,
+        rank: 2,
+      },
+      {
+        name: "孟佳宁",
+        kind: "listed",
+        approvals: 8,
+        oppositions: 0,
+        abstentions: 0,
+        rank: 4,
+      },
     ]);
   });
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ELECTIONS,
   RECORDING_GROUPS,
@@ -9,7 +9,12 @@ import {
   type ElectionId,
   type RecordingGroupId,
 } from "../shared/domain.js";
-import { api, type BallotRecord, type TallyResult } from "./api.js";
+import {
+  api,
+  type BallotRecord,
+  type RecordingProgress,
+  type TallyResult,
+} from "./api.js";
 
 type Page = "entrance" | "record" | "history" | "results" | "admin";
 type HistorySortOrder = "asc" | "desc";
@@ -100,8 +105,8 @@ export function App() {
     <div className="app-shell">
       <header>
         <div>
-          <span className="eyebrow">上海燃气有限公司工会</span>
-          <h1>第二届“两委”委员选举计票助手</h1>
+          <span className="eyebrow">上海燃气有限公司工会委员会</span>
+          <h1>第二届“两委”委员选举计票系统</h1>
         </div>
         <div className="header-status">
           <span className={connected ? "online" : "offline"}>
@@ -141,6 +146,7 @@ export function App() {
             key={`${RECORDING_GROUPS[groupId!].electionId}:${generations[RECORDING_GROUPS[groupId!].electionId]}`}
             groupId={groupId!}
             generation={generations[RECORDING_GROUPS[groupId!].electionId]}
+            refresh={refresh}
           />
         )}
         {page === "history" && <History groupId={groupId!} refresh={refresh} />}
@@ -166,12 +172,11 @@ function Entrance({
 }) {
   return (
     <section className="entrance">
-      <div className="seal">票</div>
-      <span className="eyebrow">上海燃气有限公司工会</span>
+      <span className="eyebrow">上海燃气有限公司工会委员会</span>
       <h1>
         第二届“两委”委员选举
         <br />
-        计票助手
+        计票系统
       </h1>
       <p>请选择本设备的录入组别。</p>
       <div className="group-section">
@@ -220,14 +225,19 @@ function loadDraft(electionId: ElectionId, generation: number) {
 function Recorder({
   groupId,
   generation,
+  refresh,
 }: {
   groupId: RecordingGroupId;
   generation: number;
+  refresh: number;
 }) {
   const electionId = RECORDING_GROUPS[groupId].electionId;
   const election = ELECTIONS[electionId];
   const [draft, setDraft] = useState(() => loadDraft(electionId, generation));
   const [errorMessage, setErrorMessage] = useState("");
+  const [progress, setProgress] = useState<RecordingProgress | null>(null);
+  const [progressError, setProgressError] = useState(false);
+  const progressRequest = useRef(0);
   const [submissionNotice, setSubmissionNotice] = useState<{
     sequence: number;
     valid: boolean;
@@ -238,6 +248,34 @@ function Recorder({
     approvals: number;
   } | null>(null);
   const validation = useMemo(() => validateDraft(draft), [draft]);
+  const atElectorLimit =
+    progress !== null &&
+    progress.electionActiveBallots >= progress.electorLimit;
+  const loadProgress = useCallback(async () => {
+    const request = ++progressRequest.current;
+    try {
+      const next = await api.recordingProgress(groupId);
+      if (request !== progressRequest.current) return;
+      setProgress(next);
+      setProgressError(false);
+      if (next.electionActiveBallots < next.electorLimit)
+        setErrorMessage((current) =>
+          current.startsWith("已达到") ? "" : current,
+        );
+    } catch {
+      if (request === progressRequest.current) setProgressError(true);
+    }
+  }, [groupId]);
+  useEffect(() => {
+    setProgress(null);
+    setProgressError(false);
+  }, [groupId]);
+  useEffect(() => {
+    void loadProgress();
+    return () => {
+      progressRequest.current += 1;
+    };
+  }, [loadProgress, refresh]);
   useEffect(() => {
     if (generation > 0)
       localStorage.setItem(
@@ -250,6 +288,9 @@ function Recorder({
     const timeout = window.setTimeout(() => setSubmissionNotice(null), 1500);
     return () => window.clearTimeout(timeout);
   }, [submissionNotice]);
+  useEffect(() => {
+    if (atElectorLimit) setPendingSubmission(null);
+  }, [atElectorLimit]);
   const setChoice = (name: string, choice: Choice) =>
     setDraft((current) => ({
       ...current,
@@ -275,12 +316,18 @@ function Recorder({
         `draft:${electionId}`,
         JSON.stringify({ generation, draft: empty }),
       );
+      void loadProgress();
     } catch (error) {
       setSubmissionNotice(null);
       setErrorMessage((error as Error).message);
+      void loadProgress();
     }
   };
   const requestSubmission = (manualInvalid = false) => {
+    if (atElectorLimit) {
+      setErrorMessage("已达到投票人数上限");
+      return;
+    }
     const next = { ...draft, manualInvalid };
     const checked = validateDraft(next);
     if (!checked.canSubmit) return setErrorMessage(checked.errors.join("；"));
@@ -351,6 +398,7 @@ function Recorder({
               <button
                 type="button"
                 className="confirm-danger"
+                disabled={atElectorLimit}
                 onClick={() => {
                   const next = pendingSubmission.draft;
                   setPendingSubmission(null);
@@ -371,6 +419,12 @@ function Recorder({
         <button type="button" className="reset-draft" onClick={resetDraft}>
           重置本票
         </button>
+      </div>
+      <div className="progress-mobile">
+        <RecordingProgressCard
+          progress={progress}
+          refreshFailed={progressError}
+        />
       </div>
       <div className="record-layout">
         <section className="candidate-panel">
@@ -410,107 +464,186 @@ function Recorder({
           </div>
         </section>
         <aside className="summary">
-          <h3>本票汇总</h3>
-          <div className="counts">
-            <div>
-              <b>{validation.approvals}</b>
-              <span>赞成</span>
-            </div>
-            <div>
-              <b>{validation.oppositions}</b>
-              <span>反对</span>
-            </div>
-            <div>
-              <b>{validation.abstentions}</b>
-              <span>弃权</span>
-            </div>
-            <div>
-              <b>{draft.writeIns.filter((x) => x.trim()).length}</b>
-              <span>另选</span>
-            </div>
+          <div className="progress-desktop">
+            <RecordingProgressCard
+              progress={progress}
+              refreshFailed={progressError}
+              testIds
+            />
           </div>
-          <div className={`validity ${validation.valid ? "valid" : "invalid"}`}>
-            <strong>
-              {validation.valid
-                ? "当前为有效票"
-                : validation.overvote
-                  ? "当前为超额无效票"
-                  : draft.manualInvalid
-                    ? "当前为人工无效票"
-                    : "需要修正"}
-            </strong>
-            <span>
-              应选 {election.seatCount} 人 · 赞成合计 {validation.approvals} 人
-            </span>
-          </div>
-          <div className="write-ins">
-            <div>
-              <h3>另选人</h3>
-              <span>可用名额 {validation.availableWriteIns}</span>
-            </div>
-            {draft.writeIns.map((name, index) => (
-              <div className="write-row" key={index}>
-                <input
-                  value={name}
-                  placeholder="输入姓名"
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      writeIns: current.writeIns.map((value, i) =>
-                        i === index ? event.target.value : value,
-                      ),
-                    }))
-                  }
-                />
-                <button
-                  onClick={() =>
-                    setDraft((current) => ({
-                      ...current,
-                      writeIns: current.writeIns.filter((_, i) => i !== index),
-                    }))
-                  }
-                >
-                  移除
-                </button>
+          <div className="ballot-summary">
+            <h3>本票汇总</h3>
+            <div className="counts">
+              <div>
+                <b>{validation.approvals}</b>
+                <span>赞成</span>
               </div>
-            ))}
-            <button
-              className="secondary"
-              disabled={validation.availableWriteIns <= 0}
-              onClick={() =>
-                setDraft((current) =>
-                  validateDraft(current).availableWriteIns <= 0
-                    ? current
-                    : {
-                        ...current,
-                        writeIns: [...current.writeIns, ""],
-                      },
-                )
-              }
+              <div>
+                <b>{validation.oppositions}</b>
+                <span>反对</span>
+              </div>
+              <div>
+                <b>{validation.abstentions}</b>
+                <span>弃权</span>
+              </div>
+              <div>
+                <b>{draft.writeIns.filter((x) => x.trim()).length}</b>
+                <span>另选</span>
+              </div>
+            </div>
+            <div
+              className={`validity ${validation.valid ? "valid" : "invalid"}`}
             >
-              ＋ 添加另选人
+              <strong>
+                {validation.valid
+                  ? "当前为有效票"
+                  : validation.overvote
+                    ? "当前为超额无效票"
+                    : draft.manualInvalid
+                      ? "当前为人工无效票"
+                      : "需要修正"}
+              </strong>
+              <span>
+                应选 {election.seatCount} 人 · 赞成合计 {validation.approvals}{" "}
+                人
+              </span>
+            </div>
+            <div className="write-ins">
+              <div>
+                <h3>另选人</h3>
+                <span>可用名额 {validation.availableWriteIns}</span>
+              </div>
+              {draft.writeIns.map((name, index) => (
+                <div className="write-row" key={index}>
+                  <input
+                    value={name}
+                    placeholder="输入姓名"
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        writeIns: current.writeIns.map((value, i) =>
+                          i === index ? event.target.value : value,
+                        ),
+                      }))
+                    }
+                  />
+                  <button
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        writeIns: current.writeIns.filter(
+                          (_, i) => i !== index,
+                        ),
+                      }))
+                    }
+                  >
+                    移除
+                  </button>
+                </div>
+              ))}
+              <button
+                className="secondary"
+                disabled={validation.availableWriteIns <= 0}
+                onClick={() =>
+                  setDraft((current) =>
+                    validateDraft(current).availableWriteIns <= 0
+                      ? current
+                      : {
+                          ...current,
+                          writeIns: [...current.writeIns, ""],
+                        },
+                  )
+                }
+              >
+                ＋ 添加另选人
+              </button>
+            </div>
+            {validation.errors.length > 0 && (
+              <div className="error">{validation.errors.join("；")}</div>
+            )}
+            {errorMessage && <div className="error">{errorMessage}</div>}
+            <button
+              className="primary"
+              disabled={!validation.canSubmit || atElectorLimit}
+              onClick={() => requestSubmission(false)}
+            >
+              提交本票
+            </button>
+            <button
+              className="danger-outline"
+              disabled={atElectorLimit}
+              onClick={() => requestSubmission(true)}
+            >
+              记为无效票
             </button>
           </div>
-          {validation.errors.length > 0 && (
-            <div className="error">{validation.errors.join("；")}</div>
-          )}
-          {errorMessage && <div className="error">{errorMessage}</div>}
-          <button
-            className="primary"
-            disabled={!validation.canSubmit}
-            onClick={() => requestSubmission(false)}
-          >
-            提交本票
-          </button>
-          <button
-            className="danger-outline"
-            onClick={() => requestSubmission(true)}
-          >
-            记为无效票
-          </button>
         </aside>
       </div>
     </>
+  );
+}
+
+function RecordingProgressCard({
+  progress,
+  refreshFailed,
+  testIds = false,
+}: {
+  progress: RecordingProgress | null;
+  refreshFailed: boolean;
+  testIds?: boolean;
+}) {
+  const atLimit =
+    progress !== null &&
+    progress.electionActiveBallots >= progress.electorLimit;
+  return (
+    <section
+      className={`recording-progress ${atLimit ? "at-limit" : ""}`}
+      aria-label="录入进度"
+      aria-live="polite"
+    >
+      <h3>录入进度</h3>
+      <dl>
+        <div>
+          <dt>本组已录入</dt>
+          <dd>
+            <strong data-testid={testIds ? "group-recording-count" : undefined}>
+              {progress?.groupActiveBallots ?? "—"}
+            </strong>{" "}
+            张
+          </dd>
+        </div>
+        <div>
+          <dt>本选举已录入</dt>
+          <dd>
+            <strong
+              data-testid={testIds ? "election-recording-count" : undefined}
+            >
+              {progress?.electionActiveBallots ?? "—"}
+            </strong>{" "}
+            /{" "}
+            <span data-testid={testIds ? "elector-limit" : undefined}>
+              {progress?.electorLimit ?? "—"}
+            </span>{" "}
+            张
+          </dd>
+        </div>
+      </dl>
+      <p className="progress-caption">已录入 / 上限</p>
+      {atLimit && (
+        <p className="progress-limit-message">
+          <strong>已达到投票人数上限</strong>
+          <span>撤销记录后可继续录入</span>
+        </p>
+      )}
+      {refreshFailed && (
+        <p className="progress-error">
+          {progress ? "进度更新失败，显示上次数据" : "进度更新失败，可继续录入"}
+        </p>
+      )}
+      {!progress && !refreshFailed && (
+        <p className="progress-loading">正在获取录入进度…</p>
+      )}
+    </section>
   );
 }
 
@@ -791,6 +924,7 @@ function Results({
               <span>类型</span>
               <span>赞成票</span>
               <span>反对票</span>
+              <span>弃权票</span>
             </div>
             {result.candidates.map((candidate) => (
               <div
@@ -802,6 +936,7 @@ function Results({
                 <span>{candidate.kind === "listed" ? "正式" : "另选"}</span>
                 <strong>{candidate.approvals}</strong>
                 <span>{candidate.oppositions}</span>
+                <span>{candidate.abstentions}</span>
               </div>
             ))}
           </div>
@@ -813,6 +948,9 @@ function Results({
 
 function Admin() {
   const [password, setPassword] = useState("");
+  const [electorLimits, setElectorLimits] = useState<
+    Record<ElectionId, string>
+  >({ union: "", expense: "" });
   const [pendingReset, setPendingReset] = useState<{
     ids: ElectionId[];
     label: string;
@@ -821,6 +959,17 @@ function Admin() {
     kind: "success" | "error";
     text: string;
   } | null>(null);
+  useEffect(() => {
+    api
+      .syncState()
+      .then((state) =>
+        setElectorLimits({
+          union: String(state.electorLimits.union),
+          expense: String(state.electorLimits.expense),
+        }),
+      )
+      .catch((e) => setNotice({ kind: "error", text: (e as Error).message }));
+  }, []);
   useEffect(() => {
     if (notice === null) return;
     const timeout = window.setTimeout(() => setNotice(null), 1500);
@@ -838,6 +987,36 @@ function Admin() {
       await api.reset(password, ids);
       setPassword("");
       setNotice({ kind: "success", text: `${label}成功` });
+    } catch (e) {
+      setNotice({ kind: "error", text: (e as Error).message });
+    }
+  };
+  const saveElectorLimits = async () => {
+    if (!password) {
+      setNotice({ kind: "error", text: "请先输入管理员口令" });
+      return;
+    }
+    const limits = {
+      union: Number(electorLimits.union),
+      expense: Number(electorLimits.expense),
+    };
+    if (
+      !Number.isInteger(limits.union) ||
+      limits.union <= 0 ||
+      !Number.isInteger(limits.expense) ||
+      limits.expense <= 0
+    ) {
+      setNotice({ kind: "error", text: "投票人数上限必须是正整数" });
+      return;
+    }
+    try {
+      const state = await api.updateElectorLimits(password, limits);
+      setElectorLimits({
+        union: String(state.electorLimits.union),
+        expense: String(state.electorLimits.expense),
+      });
+      setPassword("");
+      setNotice({ kind: "success", text: "投票人数上限保存成功" });
     } catch (e) {
       setNotice({ kind: "error", text: (e as Error).message });
     }
@@ -904,7 +1083,7 @@ function Admin() {
         <div className="page-heading">
           <div>
             <span className="eyebrow">仅限管理员</span>
-            <h2>计票清空</h2>
+            <h2>系统管理</h2>
           </div>
         </div>
         <label>
@@ -915,25 +1094,76 @@ function Admin() {
             onChange={(e) => setPassword(e.target.value)}
           />
         </label>
-        <div className="warning">
-          清空会永久删除目标选举的全部记录并重置序号，不提供备份与恢复。
+        <div className="admin-section">
+          <h3>投票人数上限</h3>
+          <p className="note">分别设置两项选举允许录入的未撤销选票数量。</p>
+          <div className="limit-grid">
+            <label>
+              工会委员会选举
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={electorLimits.union}
+                onChange={(e) =>
+                  setElectorLimits((current) => ({
+                    ...current,
+                    union: e.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              经费审查委员会选举
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={electorLimits.expense}
+                onChange={(e) =>
+                  setElectorLimits((current) => ({
+                    ...current,
+                    expense: e.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            className="primary admin-save"
+            disabled={!electorLimits.union || !electorLimits.expense}
+            onClick={() => void saveElectorLimits()}
+          >
+            保存投票人数上限
+          </button>
         </div>
-        <div className="danger-actions">
-          <button onClick={() => requestReset(["union"], "清空工会委员会选举")}>
-            清空工会委员会选举
-          </button>
-          <button
-            onClick={() => requestReset(["expense"], "清空经费审查委员会选举")}
-          >
-            清空经费审查委员会选举
-          </button>
-          <button
-            onClick={() =>
-              requestReset(["union", "expense"], "同时清空两项选举")
-            }
-          >
-            同时清空两项选举
-          </button>
+        <div className="admin-section">
+          <h3>计票清空</h3>
+          <div className="warning">
+            清空会永久删除目标选举的全部记录并重置序号，不提供备份与恢复。
+          </div>
+          <div className="danger-actions">
+            <button
+              onClick={() => requestReset(["union"], "清空工会委员会选举")}
+            >
+              清空工会委员会选举
+            </button>
+            <button
+              onClick={() =>
+                requestReset(["expense"], "清空经费审查委员会选举")
+              }
+            >
+              清空经费审查委员会选举
+            </button>
+            <button
+              onClick={() =>
+                requestReset(["union", "expense"], "同时清空两项选举")
+              }
+            >
+              同时清空两项选举
+            </button>
+          </div>
         </div>
       </section>
     </>

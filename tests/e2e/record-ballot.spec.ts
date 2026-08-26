@@ -27,6 +27,12 @@ test("recording group submits a valid union ballot and sees its sequence", async
     page.getByRole("heading", { name: /第二届“两委”委员选举/ }),
   ).toBeVisible();
   await page.getByRole("button", { name: /工会第一组/ }).click();
+  const groupProgress = page.getByTestId("group-recording-count");
+  const electionProgress = page.getByTestId("election-recording-count");
+  await expect(groupProgress).not.toHaveText("—");
+  const initialGroupProgress = Number(await groupProgress.textContent());
+  const initialElectionProgress = Number(await electionProgress.textContent());
+  await expect(page.getByTestId("elector-limit")).not.toHaveText("—");
   await expect(page.locator(".candidate-row")).toHaveCount(26);
   await expect(page.getByText("当前为超额无效票")).toBeVisible();
   for (const row of await page
@@ -38,6 +44,156 @@ test("recording group submits a valid union ballot and sees its sequence", async
   await expect(page.getByText("当前为有效票")).toBeVisible();
   await page.getByRole("button", { name: "提交本票" }).click();
   await expect(page.getByRole("status")).toContainText(/第 \d+ 号选票录入成功/);
+  await expect(groupProgress).toHaveText(String(initialGroupProgress + 1));
+  await expect(electionProgress).toHaveText(
+    String(initialElectionProgress + 1),
+  );
+});
+
+test("another recording group updates only the election-wide progress", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.getByRole("button", { name: /工会第一组/ }).click();
+  const groupProgress = page.getByTestId("group-recording-count");
+  const electionProgress = page.getByTestId("election-recording-count");
+  await expect(groupProgress).not.toHaveText("—");
+  const initialGroupProgress = Number(await groupProgress.textContent());
+  const initialElectionProgress = Number(await electionProgress.textContent());
+
+  const otherGroup = await page.context().newPage();
+  await otherGroup.goto("./");
+  await otherGroup.getByRole("button", { name: /工会第二组/ }).click();
+  await submitValidUnionBallot(otherGroup);
+
+  await expect(electionProgress).toHaveText(
+    String(initialElectionProgress + 1),
+    { timeout: 5_000 },
+  );
+  await expect(groupProgress).toHaveText(String(initialGroupProgress));
+  await otherGroup.close();
+});
+
+test("a limit race keeps the draft and never submits it automatically", async ({
+  page,
+}) => {
+  let full = false;
+  let version = 1;
+  let submissionCount = 0;
+  await page.route("**/api/config", (route) =>
+    route.fulfill({
+      json: {
+        versions: { union: version, expense: 1 },
+        generations: { union: 1, expense: 1 },
+        electorLimits: { union: 180, expense: 180 },
+      },
+    }),
+  );
+  await page.route("**/api/recording-progress/union-1", (route) =>
+    route.fulfill({
+      json: {
+        groupId: "union-1",
+        electionId: "union",
+        version,
+        groupActiveBallots: 60,
+        electionActiveBallots: full ? 180 : 179,
+        electorLimit: 180,
+      },
+    }),
+  );
+  await page.route("**/api/ballots", (route) => {
+    submissionCount += 1;
+    full = true;
+    return route.fulfill({
+      status: 409,
+      json: {
+        error: "已达到 180 张未撤销选票上限",
+        code: "ELECTOR_LIMIT",
+      },
+    });
+  });
+
+  await page.goto("./");
+  await page.getByRole("button", { name: /工会第一组/ }).click();
+  const rows = page.locator(".candidate-row");
+  for (let index = 0; index < 3; index += 1)
+    await rows.nth(index).getByRole("button", { name: "反对" }).click();
+
+  await page.getByRole("button", { name: "提交本票" }).click();
+  const visibleProgress = page.getByRole("region", { name: "录入进度" });
+  await expect(visibleProgress.getByText("已达到投票人数上限")).toBeVisible();
+  await expect(page.getByRole("button", { name: "提交本票" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "记为无效票" })).toBeDisabled();
+  await expect(rows.first().getByRole("button", { name: "反对" })).toHaveClass(
+    /selected/,
+  );
+
+  full = false;
+  version += 1;
+  await expect(page.getByRole("button", { name: "提交本票" })).toBeEnabled({
+    timeout: 5_000,
+  });
+  await expect(rows.first().getByRole("button", { name: "反对" })).toHaveClass(
+    /selected/,
+  );
+  await page.waitForTimeout(500);
+  expect(submissionCount).toBe(1);
+});
+
+test("mobile layout places recording progress before the candidate list", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await page.goto("./");
+  await page.getByRole("button", { name: /经审组/ }).click();
+
+  const progressBox = await page
+    .getByRole("region", { name: "录入进度" })
+    .boundingBox();
+  const candidateBox = await page.locator(".candidate-panel").boundingBox();
+  expect(progressBox).not.toBeNull();
+  expect(candidateBox).not.toBeNull();
+  expect(progressBox!.y).toBeLessThan(candidateBox!.y);
+});
+
+test("a progress outage reports the failure without blocking submission", async ({
+  page,
+}) => {
+  await page.route("**/api/recording-progress/union-1", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: "录入进度暂时不可用" },
+    }),
+  );
+
+  await page.goto("./");
+  await page.getByRole("button", { name: /工会第一组/ }).click();
+
+  await expect(
+    page
+      .getByRole("region", { name: "录入进度" })
+      .getByText("进度更新失败，可继续录入"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "提交本票" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "记为无效票" })).toBeEnabled();
+});
+
+test("entrance title and live results use the updated labels", async ({
+  page,
+}) => {
+  await page.goto("./");
+
+  await expect(page.getByText("上海燃气有限公司工会委员会")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "第二届“两委”委员选举 计票系统" }),
+  ).toBeVisible();
+  await expect(page.locator(".seal")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "直接查看实时结果 →" }).click();
+  const tableHead = page.locator(".result-row.table-head");
+  await expect(tableHead).toContainText("赞成票");
+  await expect(tableHead).toContainText("反对票");
+  await expect(tableHead).toContainText("弃权票");
 });
 
 test("client reports connectivity through polling without opening an event stream", async ({
@@ -136,6 +292,21 @@ test("administrator sees prominent password failure and reset success feedback",
   await expect(page.getByRole("status")).toContainText(
     "清空工会委员会选举成功",
   );
+});
+
+test("administrator can configure elector limits", async ({ page }) => {
+  await page.goto("./");
+  await page.getByRole("button", { name: /工会第一组/ }).click();
+  await page.getByRole("button", { name: "管理" }).click();
+
+  await page.getByLabel("管理员口令").fill("test-admin-password");
+  await page.getByLabel("工会委员会选举").fill("175");
+  await page.getByLabel("经费审查委员会选举").fill("168");
+  await page.getByRole("button", { name: "保存投票人数上限" }).click();
+
+  await expect(page.getByRole("status")).toContainText("投票人数上限保存成功");
+  await expect(page.getByLabel("工会委员会选举")).toHaveValue("175");
+  await expect(page.getByLabel("经费审查委员会选举")).toHaveValue("168");
 });
 
 test("history can sort by submission time and shows a paper-like ballot grid", async ({

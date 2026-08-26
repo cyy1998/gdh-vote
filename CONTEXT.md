@@ -17,7 +17,7 @@ The election of 7 members from the 8 listed candidates for the expense review co
 _Avoid_: Expense committee election, second election
 
 **Elector Limit**:
-The maximum number of non-withdrawn ballot records that may be accepted for an election, fixed at 180 for this event. Withdrawing a record frees one place without reusing its sequence number.
+The administrator-configured maximum number of non-withdrawn ballot records that may be accepted for one election. Each election has its own limit; withdrawing a record frees one place without reusing its sequence number.
 _Avoid_: Expected ballot count, required turnout
 
 **Listed Candidate**:
@@ -31,6 +31,10 @@ _Avoid_: Out-of-range candidate, replacement candidate
 **Recording Group**:
 A tallying team assigned a distinct set of physical ballots. The Union Committee Election has three concurrent recording groups, while the Expense Review Committee Election has one; every physical ballot belongs to exactly one group, and any recording device may select the applicable group.
 _Avoid_: User, duplicate-entry group
+
+**Group Recording Count**:
+The number of non-withdrawn ballot records submitted by the currently selected recording group for its election, regardless of whether those records are valid or invalid. It is an operational progress indicator on the recording screen, not a group-level tally result; withdrawing a record decreases it.
+_Avoid_: Group history count, group result
 
 **Ballot Record**:
 A recording group's digital representation of one physical ballot for one election. Records receive a global sequential number within that election, and a withdrawn record's number is never reused during the current tally.
@@ -81,5 +85,5 @@ The permanent removal of all ballot records and sequence numbers for one electio
 _Avoid_: Start tally, end tally, archive tally
 
 **Administrator**:
-The password-protected role whose only additional capability is permanently resetting either election or both elections after confirmation.
+The password-protected role that configures each election's elector limit and may permanently reset either election or both elections after confirmation.
 _Avoid_: Supervisor, tally closer

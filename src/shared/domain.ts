@@ -9,7 +9,6 @@ export interface ElectionConfig {
   name: string;
   shortName: string;
   seatCount: number;
-  electorLimit: number;
   candidates: readonly string[];
   groups: readonly RecordingGroupId[];
 }
@@ -20,7 +19,6 @@ export const ELECTIONS: Record<ElectionId, ElectionConfig> = {
     name: "工会委员会委员选举",
     shortName: "工会委员会",
     seatCount: 23,
-    electorLimit: 180,
     groups: ["union-1", "union-2", "union-3"],
     candidates: [
       "王凯",
@@ -56,7 +54,6 @@ export const ELECTIONS: Record<ElectionId, ElectionConfig> = {
     name: "经费审查委员会委员选举",
     shortName: "经费审查委员会",
     seatCount: 7,
-    electorLimit: 180,
     groups: ["expense"],
     candidates: [
       "李春君",
@@ -146,7 +143,7 @@ export function validateDraft(draft: BallotDraft): DraftValidation {
     election.candidates.includes(name),
   );
   if (listed) errors.push(`另选人不得与正式候选人同名：${listed}`);
-  const approvals = listedApprovals + normalizedWriteIns.length;
+  const approvals = listedApprovals;
   const overvote = approvals > election.seatCount;
   return {
     canSubmit: errors.length === 0,
@@ -166,6 +163,7 @@ export interface CandidateTotal {
   kind: "listed" | "write-in";
   approvals: number;
   oppositions: number;
+  abstentions: number;
 }
 
 export type RankedCandidate = CandidateTotal & { rank: number };

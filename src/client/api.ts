@@ -31,6 +31,16 @@ export interface TallyResult {
 export interface SyncState {
   versions: Record<ElectionId, number>;
   generations: Record<ElectionId, number>;
+  electorLimits: Record<ElectionId, number>;
+}
+
+export interface RecordingProgress {
+  groupId: RecordingGroupId;
+  electionId: ElectionId;
+  version: number;
+  groupActiveBallots: number;
+  electionActiveBallots: number;
+  electorLimit: number;
 }
 
 const API_BASE = `${import.meta.env.BASE_URL}api`;
@@ -51,6 +61,8 @@ export const api = {
     request<TallyResult>(`${API_BASE}/results/${electionId}`),
   history: (groupId: RecordingGroupId) =>
     request<BallotRecord[]>(`${API_BASE}/history/${groupId}`),
+  recordingProgress: (groupId: RecordingGroupId) =>
+    request<RecordingProgress>(`${API_BASE}/recording-progress/${groupId}`),
   submit: (groupId: RecordingGroupId, draft: BallotDraft) =>
     request<BallotRecord>(`${API_BASE}/ballots`, {
       method: "POST",
@@ -65,5 +77,13 @@ export const api = {
     request<{ ok: true }>(`${API_BASE}/admin/reset`, {
       method: "POST",
       body: JSON.stringify({ password, electionIds }),
+    }),
+  updateElectorLimits: (
+    password: string,
+    electorLimits: Record<ElectionId, number>,
+  ) =>
+    request<{ ok: true } & SyncState>(`${API_BASE}/admin/elector-limits`, {
+      method: "POST",
+      body: JSON.stringify({ password, electorLimits }),
     }),
 };
