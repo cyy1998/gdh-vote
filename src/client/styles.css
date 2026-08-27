@@ -404,6 +404,24 @@ header .link {
   color: white;
   background: #17493d;
 }
+.default-ballot {
+  width: 100%;
+  margin-top: 12px;
+  padding: 11px;
+  color: #315e53;
+  background: #f1f6f4;
+  border: 1px solid #78988f;
+  border-radius: 3px;
+  font-weight: 800;
+}
+.default-ballot:hover {
+  color: #173f37;
+  background: #e5f0ec;
+  border-color: #557a70;
+}
+.default-ballot + .primary {
+  margin-top: 8px;
+}
 .primary:disabled,
 .secondary:disabled,
 .danger-outline:disabled,

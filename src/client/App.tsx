@@ -305,6 +305,17 @@ function Recorder({
       JSON.stringify({ generation, draft: empty }),
     );
   };
+  const useDefaultUnionBallot = () => {
+    const next = createDefaultDraft("union");
+    for (const name of ["金一冰", "黄立群", "徐晓慧"])
+      next.choices[name] = "abstention";
+    setDraft(next);
+    setErrorMessage("");
+    localStorage.setItem(
+      `draft:${electionId}`,
+      JSON.stringify({ generation, draft: next }),
+    );
+  };
   const performSubmission = async (next: BallotDraft) => {
     try {
       const record = await api.submit(groupId, next);
@@ -596,6 +607,15 @@ function Recorder({
               <div className="error">{validation.errors.join("；")}</div>
             )}
             {errorMessage && <div className="error">{errorMessage}</div>}
+            {electionId === "union" && (
+              <button
+                type="button"
+                className="default-ballot"
+                onClick={useDefaultUnionBallot}
+              >
+                默认选票
+              </button>
+            )}
             <button
               className="primary"
               disabled={!validation.canSubmit || atElectorLimit}
