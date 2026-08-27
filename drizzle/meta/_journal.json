@@ -29,6 +29,13 @@
       "when": 1787724874496,
       "tag": "0003_stiff_devos",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787787798667,
+      "tag": "0004_awesome_boomerang",
+      "breakpoints": true
     }
   ]
 }

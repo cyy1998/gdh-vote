@@ -18,7 +18,7 @@ export const ballotRecords = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     electionId: text("election_id").notNull(),
-    ballotNumber: integer("sequence").notNull(),
+    groupSequence: integer("sequence").notNull(),
     groupId: text("group_id").notNull(),
     status: text("status").notNull().default("active"),
     valid: integer("valid", { mode: "boolean" }).notNull(),
@@ -27,8 +27,8 @@ export const ballotRecords = sqliteTable(
     withdrawnAt: text("withdrawn_at"),
   },
   (table) => [
-    uniqueIndex("ballot_active_election_sequence")
-      .on(table.electionId, table.ballotNumber)
+    uniqueIndex("ballot_active_group_sequence")
+      .on(table.electionId, table.groupId, table.groupSequence)
       .where(sql`${table.status} = 'active'`),
   ],
 );

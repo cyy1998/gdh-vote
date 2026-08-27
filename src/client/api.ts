@@ -1,5 +1,6 @@
 import type {
   BallotDraft,
+  BallotNumber,
   ElectionId,
   RecordingGroupId,
   RankedCandidate,
@@ -7,7 +8,7 @@ import type {
 
 export interface BallotRecord {
   id: number;
-  ballotNumber: number | null;
+  ballotNumber: BallotNumber | null;
   electionId: ElectionId;
   groupId: RecordingGroupId;
   status: "active" | "withdrawn";

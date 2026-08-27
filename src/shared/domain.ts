@@ -3,6 +3,7 @@ import { pinyin } from "pinyin-pro";
 export type ElectionId = "union" | "expense";
 export type RecordingGroupId = "union-1" | "union-2" | "union-3" | "expense";
 export type Choice = "approval" | "opposition" | "abstention";
+export type BallotNumber = string;
 
 export interface ElectionConfig {
   id: ElectionId;
@@ -70,13 +71,21 @@ export const ELECTIONS: Record<ElectionId, ElectionConfig> = {
 
 export const RECORDING_GROUPS: Record<
   RecordingGroupId,
-  { name: string; electionId: ElectionId }
+  { name: string; electionId: ElectionId; ballotPrefix?: "1" | "2" | "3" }
 > = {
-  "union-1": { name: "工会第一组", electionId: "union" },
-  "union-2": { name: "工会第二组", electionId: "union" },
-  "union-3": { name: "工会第三组", electionId: "union" },
+  "union-1": { name: "工会第一组", electionId: "union", ballotPrefix: "1" },
+  "union-2": { name: "工会第二组", electionId: "union", ballotPrefix: "2" },
+  "union-3": { name: "工会第三组", electionId: "union", ballotPrefix: "3" },
   expense: { name: "经审组", electionId: "expense" },
 };
+
+export function formatBallotNumber(
+  groupId: RecordingGroupId,
+  groupSequence: number,
+): BallotNumber {
+  const prefix = RECORDING_GROUPS[groupId].ballotPrefix;
+  return prefix ? `${prefix}-${groupSequence}` : String(groupSequence);
+}
 
 export interface BallotDraft {
   electionId: ElectionId;

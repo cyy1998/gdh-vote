@@ -30,7 +30,7 @@ describe("tally repository", () => {
     const submitted = repository.submit("union-1", draft);
 
     expect(submitted).toMatchObject({
-      ballotNumber: 1,
+      ballotNumber: "1-1",
       groupId: "union-1",
       valid: true,
       status: "active",
@@ -65,16 +65,16 @@ describe("tally repository", () => {
       expect.objectContaining({ id: first.id, ballotNumber: null }),
     );
     const replacement = repository.submit("expense", draft);
-    expect(replacement).toMatchObject({ ballotNumber: 1, status: "active" });
+    expect(replacement).toMatchObject({ ballotNumber: "1", status: "active" });
     expect(replacement.id).not.toBe(first.id);
     repository.reset(["expense"]);
     expect(repository.syncState().generations.expense).toBe(
       initialGeneration + 1,
     );
-    expect(repository.submit("expense", draft).ballotNumber).toBe(1);
+    expect(repository.submit("expense", draft).ballotNumber).toBe("1");
   });
 
-  it("allocates the smallest available ballot number across recording groups", () => {
+  it("allocates and reuses the smallest available sequence within each recording group", () => {
     const repository = createRepository();
     repository.updateElectorLimits({ union: 5, expense: 5 });
     const draft = createDefaultDraft("union");
@@ -82,20 +82,22 @@ describe("tally repository", () => {
 
     const first = repository.submit("union-1", draft);
     const second = repository.submit("union-2", draft);
-    expect(repository.submit("union-1", draft).ballotNumber).toBe(3);
+    expect(first.ballotNumber).toBe("1-1");
+    expect(second.ballotNumber).toBe("2-1");
+    expect(repository.submit("union-1", draft).ballotNumber).toBe("1-2");
     repository.withdraw("union-2", second.id);
     repository.withdraw("union-1", first.id);
 
-    expect(repository.submit("union-3", draft).ballotNumber).toBe(1);
-    expect(repository.submit("union-2", draft).ballotNumber).toBe(2);
-    expect(repository.submit("union-3", draft).ballotNumber).toBe(4);
-    expect(repository.submit("union-1", draft).ballotNumber).toBe(5);
+    expect(repository.submit("union-3", draft).ballotNumber).toBe("3-1");
+    expect(repository.submit("union-2", draft).ballotNumber).toBe("2-1");
+    expect(repository.submit("union-3", draft).ballotNumber).toBe("3-2");
+    expect(repository.submit("union-1", draft).ballotNumber).toBe("1-1");
     const activeBallotNumbers = (["union-1", "union-2", "union-3"] as const)
       .flatMap((groupId) => repository.history(groupId))
       .filter((record) => record.status === "active")
       .map((record) => record.ballotNumber!)
-      .sort((first, second) => first - second);
-    expect(activeBallotNumbers).toEqual([1, 2, 3, 4, 5]);
+      .sort();
+    expect(activeBallotNumbers).toEqual(["1-1", "1-2", "2-1", "3-1", "3-2"]);
   });
 
   it("counts overvotes and manual-invalid ballots without candidate totals", () => {
@@ -166,30 +168,43 @@ describe("tally repository", () => {
     const records = Array.from({ length: 2 }, () =>
       repository.submit("expense", draft),
     );
-    expect(records.at(-1)?.ballotNumber).toBe(2);
+    expect(records.at(-1)?.ballotNumber).toBe("2");
     expect(() => repository.submit("expense", draft)).toThrow(
       "已达到 2 张未撤销选票上限",
     );
     repository.withdraw("expense", records[0].id);
-    expect(repository.submit("expense", draft).ballotNumber).toBe(1);
+    expect(repository.submit("expense", draft).ballotNumber).toBe("1");
   });
 
-  it("rejects an elector limit below the highest active ballot number", () => {
+  it("rejects an elector limit below the active count or highest group sequence", () => {
     const repository = createRepository();
-    const draft = createDefaultDraft("expense");
-    repository.submit("expense", draft);
-    const second = repository.submit("expense", draft);
-    repository.submit("expense", draft);
-    repository.withdraw("expense", second.id);
+    repository.updateElectorLimits({ union: 5, expense: 5 });
+    const unionDraft = createDefaultDraft("union");
+    unionDraft.manualInvalid = true;
+    repository.submit("union-1", unionDraft);
+    repository.submit("union-1", unionDraft);
+    repository.submit("union-2", unionDraft);
+    repository.submit("union-2", unionDraft);
+    repository.submit("union-3", unionDraft);
 
     expect(() =>
       repository.updateElectorLimits({ union: 10, expense: 0 }),
     ).toThrow("投票人数上限必须是正整数");
     expect(() =>
-      repository.updateElectorLimits({ union: 10, expense: 2 }),
-    ).toThrow("当前未撤销记录的最大票号为 3，上限不能低于该票号");
+      repository.updateElectorLimits({ union: 4, expense: 5 }),
+    ).toThrow("当前有 5 张未撤销选票，上限不能低于 5");
+
+    repository.reset(["union"]);
+    const first = repository.submit("union-1", unionDraft);
+    const second = repository.submit("union-1", unionDraft);
+    repository.submit("union-1", unionDraft);
+    repository.withdraw("union-1", first.id);
+    repository.withdraw("union-1", second.id);
     expect(() =>
-      repository.updateElectorLimits({ union: 10, expense: 3 }),
+      repository.updateElectorLimits({ union: 2, expense: 5 }),
+    ).toThrow("最大组内序号为 3，上限不能低于 3");
+    expect(() =>
+      repository.updateElectorLimits({ union: 3, expense: 5 }),
     ).not.toThrow();
   });
 
@@ -211,7 +226,7 @@ describe("tally repository", () => {
           .history("expense")
           .map(({ ballotNumber, status }) => ({ ballotNumber, status })),
       ).toEqual([
-        { ballotNumber: 1, status: "active" },
+        { ballotNumber: "1", status: "active" },
         { ballotNumber: null, status: "withdrawn" },
       ]);
       expect(restarted.result("expense")).toMatchObject({ activeBallots: 1 });
@@ -227,7 +242,7 @@ describe("tally repository", () => {
 });
 
 describe("ballot-number migration", () => {
-  it("allows a new active record to reuse a withdrawn record's number", () => {
+  it("allows active group sequences to repeat across recording groups", () => {
     const sqlite = new Database(":memory:");
     const applyMigration = (name: string) => {
       const sql = readFileSync(path.resolve("drizzle", name), "utf8");
@@ -252,6 +267,7 @@ describe("ballot-number migration", () => {
       insertLegacyRecord.run(3, "withdrawn", "2026-08-26T01:02:00.000Z");
 
       applyMigration("0003_stiff_devos.sql");
+      applyMigration("0004_awesome_boomerang.sql");
 
       const stateColumns = sqlite
         .prepare("pragma table_info(election_state)")
@@ -265,6 +281,13 @@ describe("ballot-number migration", () => {
       expect(() =>
         insertLegacyRecord.run(3, "active", "2026-08-26T01:04:00.000Z"),
       ).toThrow(/UNIQUE constraint failed/);
+      expect(() =>
+        sqlite
+          .prepare(
+            "insert into ballot_record (election_id, sequence, group_id, status, valid, manual_invalid, submitted_at) values ('union', 3, 'union-2', 'active', 1, 0, '2026-08-26T01:05:00.000Z')",
+          )
+          .run(),
+      ).not.toThrow();
     } finally {
       sqlite.close();
     }

@@ -239,7 +239,7 @@ function Recorder({
   const [progressError, setProgressError] = useState(false);
   const progressRequest = useRef(0);
   const [submissionNotice, setSubmissionNotice] = useState<{
-    ballotNumber: number;
+    ballotNumber: string;
     valid: boolean;
   } | null>(null);
   const [pendingSubmission, setPendingSubmission] = useState<{
@@ -1146,7 +1146,9 @@ function Admin() {
               !
             </span>
             <h3 id="admin-reset-confirm-title">确认{pendingReset.label}？</h3>
-            <p>此操作将永久删除全部相关记录，票号从 1 重新开始，且无法恢复。</p>
+            <p>
+              此操作将永久删除全部相关记录，并重置各录入组票号，且无法恢复。
+            </p>
             <div className="confirm-dialog-actions">
               <button
                 type="button"

@@ -2,11 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   ELECTIONS,
   createDefaultDraft,
+  formatBallotNumber,
   rankCandidates,
   validateDraft,
 } from "./domain.js";
 
 describe("ballot recording rules", () => {
+  it("formats union ballot numbers with their group and keeps expense numbers plain", () => {
+    expect(formatBallotNumber("union-1", 7)).toBe("1-7");
+    expect(formatBallotNumber("union-2", 7)).toBe("2-7");
+    expect(formatBallotNumber("union-3", 7)).toBe("3-7");
+    expect(formatBallotNumber("expense", 7)).toBe("7");
+  });
+
   it("treats three oppositions on a union ballot as a valid 23-approval ballot", () => {
     const draft = createDefaultDraft("union");
     draft.choices["王凯"] = "opposition";

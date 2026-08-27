@@ -48,7 +48,7 @@ describe("tally HTTP interface", () => {
     });
     expect(submitted.status).toBe(201);
     expect(await submitted.json()).toMatchObject({
-      ballotNumber: 1,
+      ballotNumber: "1-1",
       valid: true,
     });
 
@@ -94,7 +94,7 @@ describe("tally HTTP interface", () => {
     const draft = createDefaultDraft("expense");
     const withdrawn = repository.submit("expense", draft);
     repository.withdraw("expense", withdrawn.id);
-    expect(repository.submit("expense", draft).ballotNumber).toBe(1);
+    expect(repository.submit("expense", draft).ballotNumber).toBe("1");
 
     const response = await app.request("/api/history/expense");
     const history = (await response.json()) as Array<Record<string, unknown>>;

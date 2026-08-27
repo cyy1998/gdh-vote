@@ -1,0 +1,2 @@
+DROP INDEX `ballot_active_election_sequence`;--> statement-breakpoint
+CREATE UNIQUE INDEX `ballot_active_group_sequence` ON `ballot_record` (`election_id`,`group_id`,`sequence`) WHERE "ballot_record"."status" = 'active';

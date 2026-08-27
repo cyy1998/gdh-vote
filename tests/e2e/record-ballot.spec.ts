@@ -1,6 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function submitValidUnionBallot(page: Page, writeIn?: string) {
+async function submitValidUnionBallot(
+  page: Page,
+  groupNumber: "1" | "2" | "3",
+  writeIn?: string,
+) {
   const rows = page.locator(".candidate-row");
   const oppositionCount = writeIn ? 4 : 3;
   for (let index = 0; index < oppositionCount; index += 1) {
@@ -12,11 +16,13 @@ async function submitValidUnionBallot(page: Page, writeIn?: string) {
   }
   await page.getByRole("button", { name: "提交本票" }).click();
   const notice = page.getByRole("status");
-  await expect(notice).toContainText(/第 \d+ 号选票录入成功/);
-  const match = (await notice.textContent())?.match(/第\s*(\d+)\s*号/);
+  await expect(notice).toContainText(
+    new RegExp(`第 ${groupNumber}-\\d+ 号选票录入成功`),
+  );
+  const match = (await notice.textContent())?.match(/第\s*(\d+-\d+)\s*号/);
   expect(match).toBeTruthy();
   await expect(notice).toBeHidden({ timeout: 2_500 });
-  return Number(match![1]);
+  return match![1];
 }
 
 test("recording group submits a valid union ballot and sees its ballot number", async ({
@@ -43,7 +49,9 @@ test("recording group submits a valid union ballot and sees its ballot number", 
   }
   await expect(page.getByText("当前为有效票")).toBeVisible();
   await page.getByRole("button", { name: "提交本票" }).click();
-  await expect(page.getByRole("status")).toContainText(/第 \d+ 号选票录入成功/);
+  await expect(page.getByRole("status")).toContainText(
+    /第 1-\d+ 号选票录入成功/,
+  );
   await expect(groupProgress).toHaveText(String(initialGroupProgress + 1));
   await expect(electionProgress).toHaveText(
     String(initialElectionProgress + 1),
@@ -62,7 +70,9 @@ test("space submits a valid ballot through the regular submission path", async (
 
   await page.keyboard.press("Space");
 
-  await expect(page.getByRole("status")).toContainText(/第 \d+ 号选票录入成功/);
+  await expect(page.getByRole("status")).toContainText(
+    /第 1-\d+ 号选票录入成功/,
+  );
 });
 
 test("space still asks for confirmation before submitting an invalid ballot", async ({
@@ -100,7 +110,7 @@ test("another recording group updates only the election-wide progress", async ({
   const otherGroup = await page.context().newPage();
   await otherGroup.goto("./");
   await otherGroup.getByRole("button", { name: /工会第二组/ }).click();
-  await submitValidUnionBallot(otherGroup);
+  await submitValidUnionBallot(otherGroup, "2");
 
   await expect(electionProgress).toHaveText(
     String(initialElectionProgress + 1),
@@ -351,11 +361,11 @@ test("history can sort by submission time and shows a paper-like ballot grid", a
   await page.goto("./");
   await page.getByRole("button", { name: /工会第三组/ }).click();
 
-  const earlierBallotNumber = await submitValidUnionBallot(page);
-  const laterBallotNumber = await submitValidUnionBallot(page, "张三");
+  const earlierBallotNumber = await submitValidUnionBallot(page, "3");
+  const laterBallotNumber = await submitValidUnionBallot(page, "3", "张三");
   await page.getByRole("button", { name: "录入历史" }).click();
 
-  const historyRows = page.getByRole("row").filter({ hasText: /第 \d+ 号/ });
+  const historyRows = page.getByRole("row").filter({ hasText: /第 3-\d+ 号/ });
   await expect(historyRows.first()).toContainText(`第 ${laterBallotNumber} 号`);
   await expect(historyRows.nth(1)).toContainText(
     `第 ${earlierBallotNumber} 号`,
@@ -433,11 +443,11 @@ test("history ignores an older response that arrives after a refresh", async ({
   const recorder = await page.context().newPage();
   await recorder.goto("./");
   await recorder.getByRole("button", { name: /工会第一组/ }).click();
-  const newSequence = await submitValidUnionBallot(recorder);
+  const newBallotNumber = await submitValidUnionBallot(recorder, "1");
 
   const newRow = page
     .getByRole("row")
-    .filter({ hasText: `第 ${newSequence} 号` });
+    .filter({ hasText: `第 ${newBallotNumber} 号` });
   await expect(newRow).toBeVisible({ timeout: 5_000 });
 
   releaseFirstResponse();
@@ -454,7 +464,7 @@ test("withdrawing a ballot preserves its recorded choices in history", async ({
   await page.goto("./");
   await page.getByRole("button", { name: /工会第二组/ }).click();
 
-  const ballotNumber = await submitValidUnionBallot(page);
+  const ballotNumber = await submitValidUnionBallot(page, "2");
   await page.getByRole("button", { name: "录入历史" }).click();
   const recordRow = page.getByRole("row").nth(1);
   await expect(recordRow).toContainText(`第 ${ballotNumber} 号`);
