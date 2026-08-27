@@ -345,13 +345,31 @@ test("the union default ballot abstains three specified candidates and approves 
   await expect(page.getByText("赞成合计 23 人")).toBeVisible();
 });
 
-test("the union default ballot shortcut is not shown for the expense election", async ({
+test("the expense default ballot abstains Li Chunjun and approves the rest", async ({
   page,
 }) => {
   await page.goto("./");
   await page.getByRole("button", { name: /经审组/ }).click();
 
-  await expect(page.getByRole("button", { name: "默认选票" })).toHaveCount(0);
+  const rows = page.locator(".candidate-row");
+  await rows.nth(1).getByRole("button", { name: "反对" }).click();
+  await page.getByRole("button", { name: "添加另选人" }).click();
+  await page.getByPlaceholder("输入姓名").fill("测试另选人");
+
+  const ballotActions = page.locator(".ballot-summary > button");
+  await expect(ballotActions.nth(0)).toHaveText("默认选票");
+  await expect(ballotActions.nth(1)).toHaveText("提交本票");
+  await ballotActions.nth(0).click();
+
+  await expect(
+    rows.filter({ hasText: "李春君" }).getByRole("button", { name: "弃权" }),
+  ).toHaveClass(/selected/);
+  await expect(
+    rows.filter({ has: page.locator("button.selected", { hasText: "赞成" }) }),
+  ).toHaveCount(7);
+  await expect(page.getByPlaceholder("输入姓名")).toHaveCount(0);
+  await expect(page.getByText("当前为有效票")).toBeVisible();
+  await expect(page.getByText("赞成合计 7 人")).toBeVisible();
 });
 
 test("administrator sees prominent password failure and reset success feedback", async ({

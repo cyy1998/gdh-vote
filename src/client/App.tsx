@@ -24,6 +24,10 @@ const groupOrder: RecordingGroupId[] = [
   "union-3",
   "expense",
 ];
+const defaultBallotAbstentions: Record<ElectionId, readonly string[]> = {
+  union: ["金一冰", "黄立群", "徐晓慧"],
+  expense: ["李春君"],
+};
 
 export function App() {
   const [groupId, setGroupId] = useState<RecordingGroupId | null>(
@@ -305,9 +309,9 @@ function Recorder({
       JSON.stringify({ generation, draft: empty }),
     );
   };
-  const useDefaultUnionBallot = () => {
-    const next = createDefaultDraft("union");
-    for (const name of ["金一冰", "黄立群", "徐晓慧"])
+  const useDefaultBallot = () => {
+    const next = createDefaultDraft(electionId);
+    for (const name of defaultBallotAbstentions[electionId])
       next.choices[name] = "abstention";
     setDraft(next);
     setErrorMessage("");
@@ -607,15 +611,13 @@ function Recorder({
               <div className="error">{validation.errors.join("；")}</div>
             )}
             {errorMessage && <div className="error">{errorMessage}</div>}
-            {electionId === "union" && (
-              <button
-                type="button"
-                className="default-ballot"
-                onClick={useDefaultUnionBallot}
-              >
-                默认选票
-              </button>
-            )}
+            <button
+              type="button"
+              className="default-ballot"
+              onClick={useDefaultBallot}
+            >
+              默认选票
+            </button>
             <button
               className="primary"
               disabled={!validation.canSubmit || atElectorLimit}
