@@ -69,6 +69,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ groupId, draft }),
     }),
+  submitBatch: (groupId: RecordingGroupId, draft: BallotDraft, count: number) =>
+    request<BallotRecord[]>(`${API_BASE}/ballots/batch`, {
+      method: "POST",
+      body: JSON.stringify({ groupId, draft, count }),
+    }),
   withdraw: (groupId: RecordingGroupId, id: number) =>
     request<{ ok: true }>(`${API_BASE}/ballots/${id}/withdraw`, {
       method: "POST",

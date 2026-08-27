@@ -176,6 +176,26 @@ describe("tally repository", () => {
     expect(repository.submit("expense", draft).ballotNumber).toBe("1");
   });
 
+  it("submits a batch atomically and rejects a batch larger than the remaining capacity", () => {
+    const repository = createRepository();
+    repository.updateElectorLimits({ union: 5, expense: 3 });
+    const draft = createDefaultDraft("expense");
+    draft.choices["李春君"] = "abstention";
+
+    const records = repository.submitBatch("expense", draft, 2);
+
+    expect(records.map((record) => record.ballotNumber)).toEqual(["1", "2"]);
+    expect(repository.result("expense")).toMatchObject({
+      version: 4,
+      activeBallots: 2,
+      validBallots: 2,
+    });
+    expect(() => repository.submitBatch("expense", draft, 2)).toThrow(
+      "当前剩余可录入 1 张，无法批量录入 2 张",
+    );
+    expect(repository.history("expense")).toHaveLength(2);
+  });
+
   it("rejects an elector limit below the active count or highest group sequence", () => {
     const repository = createRepository();
     repository.updateElectorLimits({ union: 5, expense: 5 });

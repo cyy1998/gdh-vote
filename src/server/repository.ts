@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import path from "node:path";
@@ -67,6 +67,11 @@ export interface RecordingProgress {
 
 export interface TallyRepository {
   submit(groupId: RecordingGroupId, draft: BallotDraft): BallotRecordView;
+  submitBatch(
+    groupId: RecordingGroupId,
+    draft: BallotDraft,
+    count: number,
+  ): BallotRecordView[];
   history(groupId: RecordingGroupId): BallotRecordView[];
   recordingProgress(groupId: RecordingGroupId): RecordingProgress;
   withdraw(groupId: RecordingGroupId, ballotId: number): void;
@@ -130,37 +135,50 @@ export function createTallyRepository(
       .map((choice) => choice.displayName),
   });
 
-  return {
-    submit(groupId, draft) {
-      const group = RECORDING_GROUPS[groupId];
-      if (!group || group.electionId !== draft.electionId)
-        throw new TallyError("GROUP_MISMATCH", "录入组与选举不匹配");
-      const validation = validateDraft(draft);
-      if (!validation.canSubmit)
-        throw new TallyError("INVALID_DRAFT", validation.errors.join("；"));
-      return db.transaction((tx) => {
-        const state = tx
-          .select()
-          .from(electionState)
-          .where(eq(electionState.electionId, draft.electionId))
-          .get();
-        if (!state) throw new TallyError("STATE_MISSING", "选举状态不存在");
-        const activeBallotCount = tx
-          .select({ value: count() })
-          .from(ballotRecords)
-          .where(
-            and(
-              eq(ballotRecords.electionId, draft.electionId),
-              eq(ballotRecords.status, "active"),
-            ),
-          )
-          .get()!.value;
-        if (activeBallotCount >= state.electorLimit)
+  const submitBatch = (
+    groupId: RecordingGroupId,
+    draft: BallotDraft,
+    batchSize: number,
+  ) => {
+    if (!Number.isInteger(batchSize) || batchSize <= 0)
+      throw new TallyError("INVALID_BATCH_SIZE", "批量录入数量必须是正整数");
+    const group = RECORDING_GROUPS[groupId];
+    if (!group || group.electionId !== draft.electionId)
+      throw new TallyError("GROUP_MISMATCH", "录入组与选举不匹配");
+    const validation = validateDraft(draft);
+    if (!validation.canSubmit)
+      throw new TallyError("INVALID_DRAFT", validation.errors.join("；"));
+    return db.transaction((tx) => {
+      const state = tx
+        .select()
+        .from(electionState)
+        .where(eq(electionState.electionId, draft.electionId))
+        .get();
+      if (!state) throw new TallyError("STATE_MISSING", "选举状态不存在");
+      const activeBallotCount = tx
+        .select({ value: count() })
+        .from(ballotRecords)
+        .where(
+          and(
+            eq(ballotRecords.electionId, draft.electionId),
+            eq(ballotRecords.status, "active"),
+          ),
+        )
+        .get()!.value;
+      const remaining = state.electorLimit - activeBallotCount;
+      if (batchSize > remaining) {
+        if (batchSize === 1)
           throw new TallyError(
             "ELECTOR_LIMIT",
             `已达到 ${state.electorLimit} 张未撤销选票上限`,
           );
-        const occupiedGroupSequences = tx
+        throw new TallyError(
+          "ELECTOR_LIMIT",
+          `当前剩余可录入 ${Math.max(0, remaining)} 张，无法批量录入 ${batchSize} 张`,
+        );
+      }
+      const occupiedGroupSequences = new Set(
+        tx
           .select({ groupSequence: ballotRecords.groupSequence })
           .from(ballotRecords)
           .where(
@@ -170,21 +188,27 @@ export function createTallyRepository(
               eq(ballotRecords.status, "active"),
             ),
           )
-          .orderBy(asc(ballotRecords.groupSequence))
-          .all();
-        let groupSequence = 1;
-        for (const occupied of occupiedGroupSequences) {
-          if (occupied.groupSequence < groupSequence) continue;
-          if (occupied.groupSequence > groupSequence) break;
-          groupSequence += 1;
-        }
-        if (groupSequence > state.electorLimit)
-          throw new TallyError(
-            "ELECTOR_LIMIT",
-            `已达到 ${state.electorLimit} 张未撤销选票上限`,
-          );
-        const submittedAt = new Date().toISOString();
-        const row = tx
+          .all()
+          .map(({ groupSequence }) => groupSequence),
+      );
+      const groupSequences: number[] = [];
+      for (
+        let sequence = 1;
+        sequence <= state.electorLimit && groupSequences.length < batchSize;
+        sequence += 1
+      ) {
+        if (!occupiedGroupSequences.has(sequence))
+          groupSequences.push(sequence);
+      }
+      if (groupSequences.length < batchSize)
+        throw new TallyError(
+          "ELECTOR_LIMIT",
+          `当前录入组没有足够的可用票号，无法批量录入 ${batchSize} 张`,
+        );
+
+      const submittedAt = new Date().toISOString();
+      const rows = groupSequences.map((groupSequence) =>
+        tx
           .insert(ballotRecords)
           .values({
             electionId: draft.electionId,
@@ -196,32 +220,45 @@ export function createTallyRepository(
             submittedAt,
           })
           .returning()
-          .get();
-        tx.insert(listedChoices)
-          .values(
+          .get(),
+      );
+      tx.insert(listedChoices)
+        .values(
+          rows.flatMap((row) =>
             ELECTIONS[draft.electionId].candidates.map((candidateName) => ({
               ballotId: row.id,
               candidateName,
               choice: draft.choices[candidateName],
             })),
-          )
-          .run();
-        if (validation.normalizedWriteIns.length)
-          tx.insert(writeInChoices)
-            .values(
+          ),
+        )
+        .run();
+      if (validation.normalizedWriteIns.length)
+        tx.insert(writeInChoices)
+          .values(
+            rows.flatMap((row) =>
               validation.normalizedWriteIns.map((name) => ({
                 ballotId: row.id,
                 normalizedName: name,
                 displayName: name,
               })),
-            )
-            .run();
-        tx.update(electionState)
-          .set({ version: state.version + 1 })
-          .where(eq(electionState.electionId, draft.electionId))
+            ),
+          )
           .run();
-        return materialize(row);
-      });
+      tx.update(electionState)
+        .set({ version: state.version + batchSize })
+        .where(eq(electionState.electionId, draft.electionId))
+        .run();
+      return rows.map(materialize);
+    });
+  };
+
+  return {
+    submit(groupId, draft) {
+      return submitBatch(groupId, draft, 1)[0];
+    },
+    submitBatch(groupId, draft, batchSize) {
+      return submitBatch(groupId, draft, batchSize);
     },
     history(groupId) {
       return db

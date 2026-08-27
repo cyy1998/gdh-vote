@@ -329,7 +329,8 @@ test("the union default ballot abstains three specified candidates and approves 
 
   const ballotActions = page.locator(".ballot-summary > button");
   await expect(ballotActions.nth(0)).toHaveText("默认选票");
-  await expect(ballotActions.nth(1)).toHaveText("提交本票");
+  await expect(ballotActions.nth(1)).toHaveText("默认票批量录入");
+  await expect(ballotActions.nth(2)).toHaveText("提交本票");
   await ballotActions.nth(0).click();
 
   for (const name of ["金一冰", "黄立群", "徐晓慧"]) {
@@ -358,7 +359,8 @@ test("the expense default ballot abstains Li Chunjun and approves the rest", asy
 
   const ballotActions = page.locator(".ballot-summary > button");
   await expect(ballotActions.nth(0)).toHaveText("默认选票");
-  await expect(ballotActions.nth(1)).toHaveText("提交本票");
+  await expect(ballotActions.nth(1)).toHaveText("默认票批量录入");
+  await expect(ballotActions.nth(2)).toHaveText("提交本票");
   await ballotActions.nth(0).click();
 
   await expect(
@@ -370,6 +372,30 @@ test("the expense default ballot abstains Li Chunjun and approves the rest", asy
   await expect(page.getByPlaceholder("输入姓名")).toHaveCount(0);
   await expect(page.getByText("当前为有效票")).toBeVisible();
   await expect(page.getByText("赞成合计 7 人")).toBeVisible();
+});
+
+test("batch recording creates the requested number of default ballots", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.getByRole("button", { name: /工会第一组/ }).click();
+  const groupProgress = page.getByTestId("group-recording-count");
+  const electionProgress = page.getByTestId("election-recording-count");
+  await expect(groupProgress).not.toHaveText("—");
+  const initialGroupProgress = Number(await groupProgress.textContent());
+  const initialElectionProgress = Number(await electionProgress.textContent());
+
+  await page.getByRole("button", { name: "默认票批量录入" }).click();
+  const dialog = page.getByRole("dialog", { name: "默认票批量录入" });
+  await expect(dialog).toContainText("金一冰、黄立群、徐晓慧设为弃权");
+  await dialog.getByLabel("录入数量").fill("2");
+  await dialog.getByRole("button", { name: "确认批量录入" }).click();
+
+  await expect(page.getByRole("status")).toContainText("已批量录入 2 张默认票");
+  await expect(groupProgress).toHaveText(String(initialGroupProgress + 2));
+  await expect(electionProgress).toHaveText(
+    String(initialElectionProgress + 2),
+  );
 });
 
 test("administrator sees prominent password failure and reset success feedback", async ({

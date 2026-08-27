@@ -65,6 +65,30 @@ describe("tally HTTP interface", () => {
     });
   });
 
+  it("submits multiple identical ballots through the batch endpoint", async () => {
+    repository = createTallyRepository(":memory:");
+    const app = createApp(repository);
+    const draft = createDefaultDraft("expense");
+    draft.choices["李春君"] = "abstention";
+
+    const submitted = await app.request("/api/ballots/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ groupId: "expense", draft, count: 3 }),
+    });
+
+    expect(submitted.status).toBe(201);
+    expect(await submitted.json()).toMatchObject([
+      { ballotNumber: "1", valid: true },
+      { ballotNumber: "2", valid: true },
+      { ballotNumber: "3", valid: true },
+    ]);
+    expect(repository.result("expense")).toMatchObject({
+      activeBallots: 3,
+      validBallots: 3,
+    });
+  });
+
   it("returns a recording progress snapshot for one group", async () => {
     repository = createTallyRepository(":memory:");
     const app = createApp(repository);
@@ -126,6 +150,23 @@ describe("tally HTTP interface", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ groupId: "union-1", draft: null }),
     });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejects a non-positive batch size as a client error", async () => {
+    repository = createTallyRepository(":memory:");
+    const app = createApp(repository);
+    const response = await app.request("/api/ballots/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        groupId: "expense",
+        draft: createDefaultDraft("expense"),
+        count: 0,
+      }),
+    });
+
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: "BAD_REQUEST" });
   });

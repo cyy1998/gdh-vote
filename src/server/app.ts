@@ -26,6 +26,9 @@ const ballotSubmissionSchema = z.object({
     manualInvalid: z.boolean(),
   }),
 });
+const batchBallotSubmissionSchema = ballotSubmissionSchema.extend({
+  count: z.number().int().positive().max(1_000),
+});
 const withdrawalSchema = z.object({ groupId: groupIdSchema });
 const resetSchema = z.object({
   password: z.string(),
@@ -124,6 +127,21 @@ export function createApp(
     const body = parsed.data;
     const record = repository.submit(body.groupId, body.draft);
     return c.json(record, 201);
+  });
+  routes.post("/api/ballots/batch", async (c) => {
+    const parsed = batchBallotSubmissionSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    if (!parsed.success)
+      return c.json(
+        {
+          error: "批量录入数量必须是 1 到 1000 之间的整数",
+          code: "BAD_REQUEST",
+        },
+        400,
+      );
+    const { groupId, draft, count } = parsed.data;
+    return c.json(repository.submitBatch(groupId, draft, count), 201);
   });
   routes.post("/api/ballots/:id/withdraw", async (c) => {
     const parsed = withdrawalSchema.safeParse(

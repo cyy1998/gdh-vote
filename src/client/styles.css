@@ -414,12 +414,31 @@ header .link {
   border-radius: 3px;
   font-weight: 800;
 }
+.batch-default-ballot {
+  width: 100%;
+  margin-top: 8px;
+  padding: 11px;
+  color: #315e53;
+  background: white;
+  border: 1px dashed #78988f;
+  border-radius: 3px;
+  font-weight: 800;
+}
 .default-ballot:hover {
   color: #173f37;
   background: #e5f0ec;
   border-color: #557a70;
 }
-.default-ballot + .primary {
+.batch-default-ballot:hover {
+  color: #173f37;
+  background: #f1f6f4;
+  border-color: #557a70;
+}
+.batch-default-ballot:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.batch-default-ballot + .primary {
   margin-top: 8px;
 }
 .primary:disabled,
@@ -573,6 +592,48 @@ header .link {
   color: white;
   background: #a44734;
   border: 1px solid #8e3929;
+}
+.batch-dialog {
+  border-top-color: #246352;
+}
+.batch-dialog .confirm-dialog-mark {
+  background: #246352;
+}
+.batch-dialog h3 {
+  color: #173f37;
+}
+.batch-count-field {
+  display: grid;
+  grid-template-columns: 1fr 150px;
+  align-items: center;
+  gap: 14px;
+  margin-top: 20px;
+  color: #3f4945;
+  font-weight: 800;
+  text-align: left;
+}
+.batch-count-field input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #9ba9a4;
+  border-radius: 3px;
+  font-weight: 800;
+  text-align: center;
+}
+.confirm-dialog .batch-capacity {
+  margin-top: 8px;
+  color: #747a77;
+  font-size: 12px;
+  text-align: right;
+}
+.confirm-primary {
+  color: white;
+  background: #246352;
+  border: 1px solid #17493d;
+}
+.confirm-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .entrance {
   max-width: 900px;

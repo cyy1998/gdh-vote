@@ -242,19 +242,28 @@ function Recorder({
   const [progress, setProgress] = useState<RecordingProgress | null>(null);
   const [progressError, setProgressError] = useState(false);
   const progressRequest = useRef(0);
-  const [submissionNotice, setSubmissionNotice] = useState<{
-    ballotNumber: string;
-    valid: boolean;
-  } | null>(null);
+  const [submissionNotice, setSubmissionNotice] = useState<
+    | { kind: "single"; ballotNumber: string; valid: boolean }
+    | { kind: "batch"; count: number; first: string; last: string }
+    | null
+  >(null);
   const [pendingSubmission, setPendingSubmission] = useState<{
     draft: BallotDraft;
     kind: "manual" | "overvote";
     approvals: number;
   } | null>(null);
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [batchCount, setBatchCount] = useState("1");
+  const [batchError, setBatchError] = useState("");
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const batchSubmissionInFlight = useRef(false);
   const validation = useMemo(() => validateDraft(draft), [draft]);
   const atElectorLimit =
     progress !== null &&
     progress.electionActiveBallots >= progress.electorLimit;
+  const remainingBallotCapacity = progress
+    ? Math.max(0, progress.electorLimit - progress.electionActiveBallots)
+    : null;
   const loadProgress = useCallback(async () => {
     const request = ++progressRequest.current;
     try {
@@ -289,11 +298,17 @@ function Recorder({
   }, [draft, electionId, generation]);
   useEffect(() => {
     if (submissionNotice === null) return;
-    const timeout = window.setTimeout(() => setSubmissionNotice(null), 1500);
+    const timeout = window.setTimeout(
+      () => setSubmissionNotice(null),
+      submissionNotice.kind === "batch" ? 2500 : 1500,
+    );
     return () => window.clearTimeout(timeout);
   }, [submissionNotice]);
   useEffect(() => {
-    if (atElectorLimit) setPendingSubmission(null);
+    if (atElectorLimit) {
+      setPendingSubmission(null);
+      setBatchDialogOpen(false);
+    }
   }, [atElectorLimit]);
   const setChoice = (name: string, choice: Choice) =>
     setDraft((current) => ({
@@ -309,10 +324,14 @@ function Recorder({
       JSON.stringify({ generation, draft: empty }),
     );
   };
-  const useDefaultBallot = () => {
+  const createDefaultBallot = () => {
     const next = createDefaultDraft(electionId);
     for (const name of defaultBallotAbstentions[electionId])
       next.choices[name] = "abstention";
+    return next;
+  };
+  const useDefaultBallot = () => {
+    const next = createDefaultBallot();
     setDraft(next);
     setErrorMessage("");
     localStorage.setItem(
@@ -327,6 +346,7 @@ function Recorder({
         throw new Error("服务器未返回新选票的票号");
       setErrorMessage("");
       setSubmissionNotice({
+        kind: "single",
         ballotNumber: record.ballotNumber,
         valid: record.valid,
       });
@@ -341,6 +361,48 @@ function Recorder({
       setSubmissionNotice(null);
       setErrorMessage((error as Error).message);
       void loadProgress();
+    }
+  };
+  const openBatchDialog = () => {
+    setBatchCount("1");
+    setBatchError("");
+    setBatchDialogOpen(true);
+  };
+  const performBatchSubmission = async () => {
+    if (batchSubmissionInFlight.current) return;
+    const count = Number(batchCount);
+    if (!Number.isInteger(count) || count < 1 || count > 1_000) {
+      setBatchError("请输入 1 到 1000 之间的整数");
+      return;
+    }
+    if (remainingBallotCapacity !== null && count > remainingBallotCapacity) {
+      setBatchError(`当前最多还能录入 ${remainingBallotCapacity} 张选票`);
+      return;
+    }
+    batchSubmissionInFlight.current = true;
+    setBatchSubmitting(true);
+    setBatchError("");
+    try {
+      const records = await api.submitBatch(
+        groupId,
+        createDefaultBallot(),
+        count,
+      );
+      const first = records[0]?.ballotNumber;
+      const last = records.at(-1)?.ballotNumber;
+      if (records.length !== count || !first || !last)
+        throw new Error("服务器返回的批量录入结果不完整");
+      setSubmissionNotice({ kind: "batch", count, first, last });
+      setBatchDialogOpen(false);
+      setErrorMessage("");
+      void loadProgress();
+    } catch (error) {
+      setSubmissionNotice(null);
+      setBatchError((error as Error).message);
+      void loadProgress();
+    } finally {
+      batchSubmissionInFlight.current = false;
+      setBatchSubmitting(false);
     }
   };
   const requestSubmission = (manualInvalid = false) => {
@@ -370,7 +432,8 @@ function Recorder({
         event.ctrlKey ||
         event.metaKey ||
         event.shiftKey ||
-        pendingSubmission !== null
+        pendingSubmission !== null ||
+        batchDialogOpen
       )
         return;
 
@@ -394,7 +457,7 @@ function Recorder({
     <>
       {submissionNotice !== null && (
         <div
-          className={`submit-toast ${submissionNotice.valid ? "" : "invalid"}`}
+          className={`submit-toast ${submissionNotice.kind === "single" && !submissionNotice.valid ? "invalid" : ""}`}
           role="status"
           aria-live="assertive"
         >
@@ -402,8 +465,17 @@ function Recorder({
             ✓
           </span>
           <strong className="submit-toast-copy">
-            第 {submissionNotice.ballotNumber} 号
-            {submissionNotice.valid ? "选票" : "无效票"}录入成功
+            {submissionNotice.kind === "single" ? (
+              <>
+                第 {submissionNotice.ballotNumber} 号
+                {submissionNotice.valid ? "选票" : "无效票"}录入成功
+              </>
+            ) : (
+              <>
+                已批量录入 {submissionNotice.count} 张默认票（第{" "}
+                {submissionNotice.first} 至 {submissionNotice.last} 号）
+              </>
+            )}
           </strong>
           <button
             type="button"
@@ -412,6 +484,76 @@ function Recorder({
           >
             ×
           </button>
+        </div>
+      )}
+      {batchDialogOpen && (
+        <div className="confirm-overlay">
+          <section
+            className="confirm-dialog batch-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="batch-default-title"
+          >
+            <span className="confirm-dialog-mark" aria-hidden="true">
+              ✓
+            </span>
+            <h3 id="batch-default-title">默认票批量录入</h3>
+            <p>
+              每张票将把{defaultBallotAbstentions[electionId].join("、")}
+              设为弃权，其余候选人设为赞成。
+            </p>
+            <label className="batch-count-field">
+              <span>录入数量</span>
+              <input
+                type="number"
+                min="1"
+                max={remainingBallotCapacity ?? 1_000}
+                step="1"
+                value={batchCount}
+                autoFocus
+                disabled={batchSubmitting}
+                onFocus={(event) => event.currentTarget.select()}
+                onChange={(event) => {
+                  setBatchCount(event.target.value);
+                  setBatchError("");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !batchSubmitting) {
+                    event.preventDefault();
+                    void performBatchSubmission();
+                  }
+                }}
+              />
+            </label>
+            <p className="batch-capacity">
+              {remainingBallotCapacity === null
+                ? "提交时将由服务器校验剩余可录入数量"
+                : `当前最多还能录入 ${remainingBallotCapacity} 张`}
+            </p>
+            {batchError && (
+              <div className="error" role="alert">
+                {batchError}
+              </div>
+            )}
+            <div className="confirm-dialog-actions">
+              <button
+                type="button"
+                className="confirm-cancel"
+                disabled={batchSubmitting}
+                onClick={() => setBatchDialogOpen(false)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="confirm-primary"
+                disabled={batchSubmitting || atElectorLimit}
+                onClick={() => void performBatchSubmission()}
+              >
+                {batchSubmitting ? "正在录入…" : "确认批量录入"}
+              </button>
+            </div>
+          </section>
         </div>
       )}
       {pendingSubmission !== null && (
@@ -617,6 +759,14 @@ function Recorder({
               onClick={useDefaultBallot}
             >
               默认选票
+            </button>
+            <button
+              type="button"
+              className="batch-default-ballot"
+              disabled={atElectorLimit}
+              onClick={openBatchDialog}
+            >
+              默认票批量录入
             </button>
             <button
               className="primary"
