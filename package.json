@@ -25,6 +25,7 @@
     "@hono/node-server": "2.1.1",
     "better-sqlite3": "13.0.3",
     "drizzle-orm": "0.45.2",
+    "fflate": "0.8.2",
     "hono": "4.13.4",
     "pinyin-pro": "3.29.3",
     "react": "19.2.8",

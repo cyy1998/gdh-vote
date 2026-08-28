@@ -65,6 +65,24 @@ describe("tally HTTP interface", () => {
     });
   });
 
+  it("exports the final results as a Word document", async () => {
+    repository = createTallyRepository(":memory:");
+    repository.updateElectorLimits({ union: 176, expense: 169 });
+    const app = createApp(repository);
+
+    const response = await app.request("/api/results/export");
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    expect(response.headers.get("content-disposition")).toContain(
+      "filename*=UTF-8''",
+    );
+    expect(String.fromCharCode(...bytes.slice(0, 2))).toBe("PK");
+  });
+
   it("submits multiple identical ballots through the batch endpoint", async () => {
     repository = createTallyRepository(":memory:");
     const app = createApp(repository);

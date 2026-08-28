@@ -10,6 +10,10 @@ import {
   type RecordingGroupId,
 } from "../shared/domain.js";
 import { normalizeBasePath } from "./base-path.js";
+import {
+  createFinalElectionReport,
+  ReportExportError,
+} from "./report-export.js";
 import { TallyError, type TallyRepository } from "./repository.js";
 
 const electionIdSchema = z.enum(["union", "expense"]);
@@ -80,6 +84,8 @@ export function createApp(
         { error: error.message, code: error.code },
         error.code === "NOT_FOUND" ? 404 : 409,
       );
+    if (error instanceof ReportExportError)
+      return c.json({ error: error.message, code: "REPORT_EXPORT" }, 422);
     console.error(error);
     return c.json(
       { error: "服务器发生未预期错误", code: "INTERNAL_ERROR" },
@@ -102,6 +108,32 @@ export function createApp(
       recordingGroups: RECORDING_GROUPS,
       ...state,
     });
+  });
+  routes.get("/api/results/export", (c) => {
+    const state = repository.syncState();
+    const report = createFinalElectionReport({
+      union: {
+        result: repository.result("union"),
+        electorLimit: state.electorLimits.union,
+      },
+      expense: {
+        result: repository.result("expense"),
+        electorLimit: state.electorLimits.expense,
+      },
+    });
+    c.header(
+      "content-type",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    c.header(
+      "content-disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent("上海燃气第二届工会选举计票结果报告单.docx")}`,
+    );
+    const body = report.buffer.slice(
+      report.byteOffset,
+      report.byteOffset + report.byteLength,
+    ) as ArrayBuffer;
+    return c.body(body);
   });
   routes.get("/api/results/:electionId", (c) => {
     const electionId = c.req.param("electionId") as ElectionId;

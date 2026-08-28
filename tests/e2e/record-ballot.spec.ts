@@ -240,6 +240,13 @@ test("entrance title and live results use the updated labels", async ({
   await expect(tableHead).toContainText("赞成票");
   await expect(tableHead).toContainText("反对票");
   await expect(tableHead).toContainText("弃权票");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出最终结果" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(
+    "上海燃气第二届工会选举计票结果报告单.docx",
+  );
 });
 
 test("client reports connectivity through polling without opening an event stream", async ({

@@ -56,10 +56,29 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+async function download(url: string) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new Error(body.error ?? "导出失败");
+  }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const encodedFilename = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  return {
+    blob: await response.blob(),
+    filename: encodedFilename
+      ? decodeURIComponent(encodedFilename)
+      : "上海燃气第二届工会选举计票结果报告单.docx",
+  };
+}
+
 export const api = {
   syncState: () => request<SyncState>(`${API_BASE}/config`),
   result: (electionId: ElectionId) =>
     request<TallyResult>(`${API_BASE}/results/${electionId}`),
+  exportFinalReport: () => download(`${API_BASE}/results/export`),
   history: (groupId: RecordingGroupId) =>
     request<BallotRecord[]>(`${API_BASE}/history/${groupId}`),
   recordingProgress: (groupId: RecordingGroupId) =>

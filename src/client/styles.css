@@ -861,6 +861,26 @@ header .link {
 .danger-text {
   color: #a33f31;
 }
+.result-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.export-results {
+  padding: 9px 16px;
+  color: white;
+  background: #9b6d25;
+  border: 1px solid #80591f;
+  border-radius: 3px;
+  font-weight: 800;
+}
+.export-results:hover:not(:disabled) {
+  background: #80591f;
+}
+.export-results:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 .tabs {
   display: flex;
   border: 1px solid #cfc9be;
@@ -1032,6 +1052,14 @@ header .link {
   .page-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .result-heading-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .export-results {
+    align-self: flex-start;
   }
   .history-controls {
     width: 100%;

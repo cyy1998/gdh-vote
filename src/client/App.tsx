@@ -1137,34 +1137,65 @@ function Results({
 }) {
   const [result, setResult] = useState<TallyResult>();
   const [error, setError] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [exporting, setExporting] = useState(false);
   useEffect(() => {
     api
       .result(electionId)
       .then(setResult)
       .catch((e) => setError(e.message));
   }, [electionId, refresh]);
+  const exportFinalReport = async () => {
+    setExporting(true);
+    setExportError("");
+    try {
+      const { blob, filename } = await api.exportFinalReport();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (exportFailure) {
+      setExportError((exportFailure as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  };
   return (
     <section>
       <div className="page-heading">
         <div>
           <h2>实时结果</h2>
         </div>
-        <div className="tabs">
+        <div className="result-heading-actions">
           <button
-            className={electionId === "union" ? "active" : ""}
-            onClick={() => setElectionId("union")}
+            className="export-results"
+            disabled={exporting}
+            onClick={() => void exportFinalReport()}
           >
-            工会委员会
+            {exporting ? "正在导出…" : "导出最终结果"}
           </button>
-          <button
-            className={electionId === "expense" ? "active" : ""}
-            onClick={() => setElectionId("expense")}
-          >
-            经费审查委员会
-          </button>
+          <div className="tabs">
+            <button
+              className={electionId === "union" ? "active" : ""}
+              onClick={() => setElectionId("union")}
+            >
+              工会委员会
+            </button>
+            <button
+              className={electionId === "expense" ? "active" : ""}
+              onClick={() => setElectionId("expense")}
+            >
+              经费审查委员会
+            </button>
+          </div>
         </div>
       </div>
       {error && <div className="error">{error}</div>}
+      {exportError && <div className="error">{exportError}</div>}
       {result && (
         <>
           <div className="result-counts">
